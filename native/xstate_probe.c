@@ -18,7 +18,8 @@
  *            (Linux: same as fault)
  *   nofault  the page is readable (control: only interrupts and preemption)
  * Environment: XSTATE_PROBE_CLOBBER=1 makes the handler zero the volatile vector registers before
- * resuming; XSTATE_PROBE_HANDLER_YIELD=1 makes it yield the CPU; XSTATE_PROBE_SELF_TEST=1 flips a bit of xmm0 in the saved context (must report corruption).
+ * resuming; XSTATE_PROBE_HANDLER_YIELD=1 makes it yield the CPU; XSTATE_PROBE_REDIRECT=1 makes it resume
+ * at another instruction (a `ret`), as a JVM resumes in its safepoint handler; XSTATE_PROBE_SELF_TEST=1 flips a bit of xmm0 in the saved context (must report corruption).
  * Exit code: 0 no corruption, 3 corruption seen, 2 neither AVX-512 nor AVX2.
  * On a host without AVX-512 it falls back to ymm0-15 (SSE and AVX components only).
  *
@@ -62,6 +63,9 @@ static int clobber;
 /* XSTATE_PROBE_HANDLER_YIELD=1: the handler gives up its time slice (SwitchToThread / sched_yield), so the
  * thread is usually switched out while the exception is being dispatched, as a JVM thread may be. */
 static int handler_yield;
+/* XSTATE_PROBE_REDIRECT=1: the handler resumes at a different instruction (a `ret` at thunk+8) instead of
+ * the next one, as a JVM resumes a safepoint poll trap in its safepoint handler blob. */
+static int redirect;
 static int use_avx512;
 static volatile long long first_flags = -1;
 static volatile long long first_xstate_mask = -1;
@@ -174,7 +178,8 @@ static LONG CALLBACK on_exception(PEXCEPTION_POINTERS info) {
     PEXCEPTION_RECORD r = info->ExceptionRecord;
     if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2
             && (unsigned char *) r->ExceptionInformation[1] == trap_page) {
-        info->ContextRecord->Rip += 2; /* skip `test ecx, [rbx]` (85 0B) */
+        if (redirect) info->ContextRecord->Rip = (DWORD64) (uintptr_t) (trap_thunk + 8);
+        else info->ContextRecord->Rip += 2; /* skip `test ecx, [rbx]` (85 0B) */
         thread_traps++;
         if (self_test) info->ContextRecord->Xmm0.Low ^= 1; /* proves detection works */
         if (first_flags < 0) {
@@ -193,7 +198,7 @@ static EXCEPTION_DISPOSITION on_frame_exception(PEXCEPTION_RECORD r, ULONG64 fra
     (void) frame; (void) dc;
     if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2
             && (unsigned char *) r->ExceptionInformation[1] == trap_page) {
-        ctx->Rip += 2;
+        if (redirect) ctx->Rip = (DWORD64) (uintptr_t) (trap_thunk + 8); else ctx->Rip += 2;
         thread_traps++;
         if (self_test) ctx->Xmm0.Low ^= 1;
         if (first_flags < 0) {
@@ -237,7 +242,8 @@ static void on_segv(int sig, siginfo_t *si, void *uc_) {
     (void) sig;
     ucontext_t *uc = uc_;
     if ((unsigned char *) si->si_addr == trap_page) {
-        uc->uc_mcontext.gregs[REG_RIP] += 2;
+        if (redirect) uc->uc_mcontext.gregs[REG_RIP] = (greg_t) (uintptr_t) (trap_thunk + 8);
+        else uc->uc_mcontext.gregs[REG_RIP] += 2;
         thread_traps++;
         if (self_test) uc->uc_mcontext.fpregs->_xmm[0].element[0] ^= 1; /* proves detection works */
         if (clobber) clobber_volatile_state();
@@ -436,15 +442,16 @@ int main(int argc, char **argv) {
     self_test = getenv("XSTATE_PROBE_SELF_TEST") != NULL;
     clobber = getenv("XSTATE_PROBE_CLOBBER") != NULL;
     handler_yield = getenv("XSTATE_PROBE_HANDLER_YIELD") != NULL;
+    redirect = getenv("XSTATE_PROBE_REDIRECT") != NULL;
 #ifdef _WIN32
     trap_page = VirtualAlloc(NULL, 4096, MEM_RESERVE | MEM_COMMIT, fault_mode ? PAGE_NOACCESS : PAGE_READONLY);
     trap_thunk = VirtualAlloc(NULL, 4096, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-    trap_thunk[0] = 0x85; trap_thunk[1] = 0x0B; trap_thunk[2] = 0xC3;
+    trap_thunk[0] = 0x85; trap_thunk[1] = 0x0B; trap_thunk[2] = 0xC3; trap_thunk[8] = 0xC3;
     if (seh_mode) install_function_table(trap_thunk); else AddVectoredExceptionHandler(1, on_exception);
 #else
     trap_page = mmap(NULL, 4096, fault_mode ? PROT_NONE : PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     trap_thunk = mmap(NULL, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    trap_thunk[0] = 0x85; trap_thunk[1] = 0x0B; trap_thunk[2] = 0xC3;
+    trap_thunk[0] = 0x85; trap_thunk[1] = 0x0B; trap_thunk[2] = 0xC3; trap_thunk[8] = 0xC3;
     struct sigaction sa;
     memset(&sa, 0, sizeof sa);
     sa.sa_sigaction = on_segv;
@@ -480,8 +487,8 @@ int main(int argc, char **argv) {
         for (int r = 0; r < NREG; r++) reg_hits[r] += ws[t].reg_hits[r];
     }
     printf("xstate_probe isa=%s mode=%s threads=%d seconds=%d iterations=%lld traps=%lld\n", use_avx512 ? "avx512" : "avx2", mode, threads, seconds, iterations, traps);
-    printf("  handler clobbers volatile vector state: %s, handler yields: %s\n", clobber ? "yes" : "no",
-           handler_yield ? "yes" : "no");
+    printf("  handler clobbers volatile vector state: %s, handler yields: %s, redirect: %s\n",
+           clobber ? "yes" : "no", handler_yield ? "yes" : "no", redirect ? "yes" : "no");
 #ifdef _WIN32
     printf("  first trap: CONTEXT.ContextFlags=0x%llx, GetXStateFeaturesMask=0x%llx (-2: call failed)\n",
            first_flags, first_xstate_mask);

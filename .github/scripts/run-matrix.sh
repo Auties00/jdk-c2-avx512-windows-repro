@@ -17,7 +17,7 @@ isa=$($exe nofault 1 1 | sed -n 's/.*isa=\([a-z0-9]*\).*/\1/p')
 echo "$isa" > out/isa.txt
 
 # mode threads env (env: comma-separated XSTATE_PROBE_* switches, or -)
-for probe in "fault 4 -" "seh 4 -" "fault 4 CLOBBER" "seh 4 CLOBBER" "seh 8 HANDLER_YIELD" "seh 8 CLOBBER,HANDLER_YIELD" "nofault 4 -"; do
+for probe in "fault 4 -" "seh 4 -" "fault 4 CLOBBER" "seh 4 CLOBBER" "seh 8 HANDLER_YIELD" "seh 8 CLOBBER,HANDLER_YIELD" "seh 4 REDIRECT" "seh 8 REDIRECT,CLOBBER,HANDLER_YIELD" "nofault 4 -"; do
   set -- $probe
   envs=()
   if [ "$3" != - ]; then for e in ${3//,/ }; do envs+=("XSTATE_PROBE_$e=1"); done; fi
@@ -33,7 +33,7 @@ for probe in "fault 4 -" "seh 4 -" "fault 4 CLOBBER" "seh 4 CLOBBER" "seh 8 HAND
   detail=$(grep -E 'first trap|corrupted iterations [1-9]|registers hit: .' "$log" | sed 's/^ *//' | tr '\n' ';' | tr -s ' ')
   row native "xstate_probe $1" "threads=$2 $3" - "$result" "$detail"
 done
-[ "${PROBE_ONLY:-false}" = true ] && exit 0
+[ "${MODE:-full}" = probe ] && exit 0
 
 # java <jdk> <test> <seed> <flags...>; classifies by exit code and hs_err presence
 run_java() {
@@ -47,6 +47,7 @@ run_java() {
   local args=()
   case $test in
     vector-field) args=(--add-modules jdk.incubator.vector -cp classes Repro field "$SECONDS_VECTOR" 4) ;;
+    oopmap) args=(-XX:CompileCommand=quiet -XX:CompileCommand=print,Repro::viaField --add-modules jdk.incubator.vector -cp classes Repro field 3 4) ;;
     scalar-doubles) args=(-cp classes ScalarRepro doubles "$SECONDS_JAVA" 4) ;;
     scalar-oop) args=(-cp classes ScalarRepro oop "$SECONDS_JAVA" 4) ;;
   esac
@@ -54,6 +55,18 @@ run_java() {
     "${stress[@]}" "$@" -XX:-CreateCoredumpOnCrash -XX:ErrorFile=hs_err_%p.log "${args[@]}" \
     > "out/logs/$tag.log" 2>&1
   local code=$? result detail=""
+  if [ "$test" = oopmap ]; then
+    # the oop maps of the C2 compile's safepoint polls (CompileCommand=print, no disassembler needed)
+    awk '/^Compiled method \(c2\)/{c2=1} /^Compiled method \(c1\)/{c2=0} c2 && /ImmutableOopMap/{m=$0} c2 && /\{poll\}/{sub(/.*ImmutableOopMap/, "", m); print m}' \
+      "out/logs/$tag.log" | sort | uniq -c | tr -s ' ' > "out/logs/$tag.polls.txt"
+    detail=$(tr '\n' ';' < "out/logs/$tag.polls.txt")
+    result=ok
+    if grep -q -E 'xmm(1[6-9]|2[0-9]|3[01])=(Narrow)?Oop' "out/logs/$tag.polls.txt"; then result="OOP-IN-XMM16+"; fi
+    rm -f hs_err_*.log
+    row "$jdk" "$test" "${*:--}" "$seed" "$result" "$detail"
+    echo "$jdk $test seed=$seed -> $result $detail"
+    return
+  fi
   if ls hs_err_*.log > /dev/null 2>&1; then
     result=CRASH
     local f
@@ -83,6 +96,17 @@ for spec in $JDKS; do
   echo "$jdk	$version	$flags" >> out/jdks.tsv
   rm -rf classes
   "$JDK_PATH/bin/javac" --add-modules jdk.incubator.vector -d classes Repro.java ScalarRepro.java 2>&1 | grep -v -i warning
+  if [ "${MODE:-full}" = diag ]; then
+    for seed in $SEEDS; do
+      run_java "$jdk" oopmap "$seed"
+      run_java "$jdk" vector-field "$seed"
+      run_java "$jdk" vector-field "$seed" -XX:+UseSerialGC
+      run_java "$jdk" vector-field "$seed" -XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC -Xmx4g -Drepro.churn=false
+      run_java "$jdk" vector-field "$seed" -XX:-SafepointALot -XX:GuaranteedSafepointInterval=0
+      run_java "$jdk" vector-field "$seed" -XX:-SafepointALot -XX:GuaranteedSafepointInterval=0 -XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC -Xmx4g -Drepro.churn=false
+    done
+    continue
+  fi
   run_java "$jdk" scalar-doubles -
   run_java "$jdk" scalar-doubles - -XX:UseAVX=2
   run_java "$jdk" scalar-oop -

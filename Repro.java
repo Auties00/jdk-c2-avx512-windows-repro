@@ -248,13 +248,16 @@ public final class Repro {
             }));
         }
         // garbage so that young collections, which stop the workers in their loops, keep happening
-        var churn = Thread.ofPlatform().daemon().name("churn").start(() -> {
-            var keep = new Object[64];
-            var random = new SplittableRandom(99);
-            while (true) {
-                keep[random.nextInt(keep.length)] = new byte[random.nextInt(16, 65536)];
-            }
-        });
+        // (-Drepro.churn=false turns it off, for a run without any GC, such as with Epsilon)
+        if (!"false".equals(System.getProperty("repro.churn"))) {
+            Thread.ofPlatform().daemon().name("churn").start(() -> {
+                var keep = new Object[64];
+                var random = new SplittableRandom(99);
+                while (true) {
+                    keep[random.nextInt(keep.length)] = new byte[random.nextInt(16, 65536)];
+                }
+            });
+        }
         for (var worker : workers) {
             worker.join();
         }

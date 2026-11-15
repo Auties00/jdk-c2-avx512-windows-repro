@@ -18,10 +18,11 @@ on:
         default: '15'
       seconds_probe:
         default: '15'
-      probe_only:
-        description: Run only the native probe
-        type: boolean
-        default: false
+      mode:
+        description: full (probe + reproducers), probe (native probe only), diag (probe + GC/safepoint/oop-map diagnostics)
+        type: choice
+        options: [full, probe, diag]
+        default: full
 
 jobs:
   windows:
@@ -77,7 +78,7 @@ jobs:
           SECONDS_JAVA: ${{ inputs.seconds_java }}
           SECONDS_VECTOR: ${{ inputs.seconds_vector }}
           SECONDS_PROBE: ${{ inputs.seconds_probe }}
-          PROBE_ONLY: ${{ inputs.probe_only }}
+          MODE: ${{ inputs.mode }}
         run: |
           JDKS="temurin-26=$(cygpath -u "${{ steps.jdk26.outputs.path }}")"
           [ -n "${{ steps.jdk27.outputs.path }}" ] && JDKS="$JDKS temurin-27=$(cygpath -u "${{ steps.jdk27.outputs.path }}")"
@@ -139,7 +140,7 @@ jobs:
           SECONDS_JAVA: ${{ inputs.seconds_java }}
           SECONDS_VECTOR: ${{ inputs.seconds_vector }}
           SECONDS_PROBE: ${{ inputs.seconds_probe }}
-          PROBE_ONLY: ${{ inputs.probe_only }}
+          MODE: ${{ inputs.mode }}
         run: |
           JDKS="temurin-26=${{ steps.jdk26.outputs.path }}"
           [ -n "${{ steps.jdk27.outputs.path }}" ] && JDKS="$JDKS temurin-27=${{ steps.jdk27.outputs.path }}"
