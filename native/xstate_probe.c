@@ -66,6 +66,8 @@ static int handler_yield;
 /* XSTATE_PROBE_REDIRECT=1: the handler resumes at a different instruction (a `ret` at thunk+8) instead of
  * the next one, as a JVM resumes a safepoint poll trap in its safepoint handler blob. */
 static int redirect;
+static int sparse;
+static int sparse_vzeroupper;
 static int use_avx512;
 static volatile long long first_flags = -1;
 static volatile long long first_xstate_mask = -1;
@@ -355,6 +357,107 @@ static void round_trip_avx2(const uint64_t *in, uint64_t *out, const uint16_t *k
           "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15");
 }
 
+/* Sparse variant (XSTATE_PROBE_SPARSE=1): every vector register is zero except the low 64 bits of
+ * xmm16-31, written by EVEX vmovq, which is how C2 spills a reference to an upper-bank register;
+ * XSTATE_PROBE_VZEROUPPER=1 also runs vzeroupper before the trap. */
+__attribute__((noinline, target("avx512f")))
+static void round_trip_sparse(const uint64_t *in, uint64_t *out, uint16_t *kout, unsigned char *page, int vzu) {
+    register void *thunk __asm__("r8") = trap_thunk;
+    __asm__ volatile(
+        "vzeroall\n\t"
+        "vpxord %%zmm16, %%zmm16, %%zmm16\n\t"
+        "vpxord %%zmm17, %%zmm17, %%zmm17\n\t"
+        "vpxord %%zmm18, %%zmm18, %%zmm18\n\t"
+        "vpxord %%zmm19, %%zmm19, %%zmm19\n\t"
+        "vpxord %%zmm20, %%zmm20, %%zmm20\n\t"
+        "vpxord %%zmm21, %%zmm21, %%zmm21\n\t"
+        "vpxord %%zmm22, %%zmm22, %%zmm22\n\t"
+        "vpxord %%zmm23, %%zmm23, %%zmm23\n\t"
+        "vpxord %%zmm24, %%zmm24, %%zmm24\n\t"
+        "vpxord %%zmm25, %%zmm25, %%zmm25\n\t"
+        "vpxord %%zmm26, %%zmm26, %%zmm26\n\t"
+        "vpxord %%zmm27, %%zmm27, %%zmm27\n\t"
+        "vpxord %%zmm28, %%zmm28, %%zmm28\n\t"
+        "vpxord %%zmm29, %%zmm29, %%zmm29\n\t"
+        "vpxord %%zmm30, %%zmm30, %%zmm30\n\t"
+        "vpxord %%zmm31, %%zmm31, %%zmm31\n\t"
+        "kxorw %%k1, %%k1, %%k1\n\t"
+        "kxorw %%k2, %%k2, %%k2\n\t"
+        "kxorw %%k3, %%k3, %%k3\n\t"
+        "kxorw %%k4, %%k4, %%k4\n\t"
+        "kxorw %%k5, %%k5, %%k5\n\t"
+        "kxorw %%k6, %%k6, %%k6\n\t"
+        "kxorw %%k7, %%k7, %%k7\n\t"
+        "vmovq 16*64(%%rax), %%xmm16\n\t"
+        "vmovq 17*64(%%rax), %%xmm17\n\t"
+        "vmovq 18*64(%%rax), %%xmm18\n\t"
+        "vmovq 19*64(%%rax), %%xmm19\n\t"
+        "vmovq 20*64(%%rax), %%xmm20\n\t"
+        "vmovq 21*64(%%rax), %%xmm21\n\t"
+        "vmovq 22*64(%%rax), %%xmm22\n\t"
+        "vmovq 23*64(%%rax), %%xmm23\n\t"
+        "vmovq 24*64(%%rax), %%xmm24\n\t"
+        "vmovq 25*64(%%rax), %%xmm25\n\t"
+        "vmovq 26*64(%%rax), %%xmm26\n\t"
+        "vmovq 27*64(%%rax), %%xmm27\n\t"
+        "vmovq 28*64(%%rax), %%xmm28\n\t"
+        "vmovq 29*64(%%rax), %%xmm29\n\t"
+        "vmovq 30*64(%%rax), %%xmm30\n\t"
+        "vmovq 31*64(%%rax), %%xmm31\n\t"
+        "test %%esi, %%esi\n\t"
+        "jz 1f\n\t"
+        "vzeroupper\n\t"
+        "1:\n\t"
+        "sub $128, %%rsp\n\t" "call *%%r8\n\t" "add $128, %%rsp\n\t"
+        "vmovdqu64 %%zmm0, 0*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm1, 1*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm2, 2*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm3, 3*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm4, 4*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm5, 5*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm6, 6*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm7, 7*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm8, 8*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm9, 9*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm10, 10*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm11, 11*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm12, 12*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm13, 13*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm14, 14*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm15, 15*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm16, 16*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm17, 17*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm18, 18*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm19, 19*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm20, 20*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm21, 21*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm22, 22*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm23, 23*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm24, 24*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm25, 25*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm26, 26*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm27, 27*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm28, 28*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm29, 29*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm30, 30*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm31, 31*64(%%rdx)\n\t"
+        "kmovw %%k1, 0(%%rdi)\n\t"
+        "kmovw %%k2, 2(%%rdi)\n\t"
+        "kmovw %%k3, 4(%%rdi)\n\t"
+        "kmovw %%k4, 6(%%rdi)\n\t"
+        "kmovw %%k5, 8(%%rdi)\n\t"
+        "kmovw %%k6, 10(%%rdi)\n\t"
+        "kmovw %%k7, 12(%%rdi)\n\t"
+        :
+        : "a"(in), "d"(out), "b"(page), "D"(kout), "S"(vzu), "c"(0), "r"(thunk)
+        : "memory", "cc",
+          "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
+          "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
+          "xmm16", "xmm17", "xmm18", "xmm19", "xmm20", "xmm21", "xmm22", "xmm23",
+          "xmm24", "xmm25", "xmm26", "xmm27", "xmm28", "xmm29", "xmm30", "xmm31",
+          "k1", "k2", "k3", "k4", "k5", "k6", "k7");
+}
+
 static int component_of(int reg, int q) {
     if (reg >= 16) return C_HI16_ZMM;
     if (q < 2) return C_SSE;
@@ -381,7 +484,12 @@ static void *worker_main(void *arg)
             for (int k = 0; k < NK; k++) kin[k] = (uint16_t) ((seed >> (8 * k)) | 0x0101);
             memset(out, 0xEE, sizeof out);
             memset(kout, 0xEE, sizeof kout);
-            if (use_avx512) {
+            if (use_avx512 && sparse) {
+                for (int i = 0; i < NREG * NQ; i++)
+                    if (i < 16 * NQ || i % NQ != 0) in[i] = 0;
+                memset(kin, 0, sizeof kin);
+                round_trip_sparse(in, out, kout, trap_page, sparse_vzeroupper);
+            } else if (use_avx512) {
                 round_trip(in, out, kin, kout, trap_page);
             } else {
                 round_trip_avx2(in, out, kin, kout, trap_page);
@@ -443,6 +551,8 @@ int main(int argc, char **argv) {
     clobber = getenv("XSTATE_PROBE_CLOBBER") != NULL;
     handler_yield = getenv("XSTATE_PROBE_HANDLER_YIELD") != NULL;
     redirect = getenv("XSTATE_PROBE_REDIRECT") != NULL;
+    sparse = getenv("XSTATE_PROBE_SPARSE") != NULL;
+    sparse_vzeroupper = getenv("XSTATE_PROBE_VZEROUPPER") != NULL;
 #ifdef _WIN32
     trap_page = VirtualAlloc(NULL, 4096, MEM_RESERVE | MEM_COMMIT, fault_mode ? PAGE_NOACCESS : PAGE_READONLY);
     trap_thunk = VirtualAlloc(NULL, 4096, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
@@ -487,8 +597,9 @@ int main(int argc, char **argv) {
         for (int r = 0; r < NREG; r++) reg_hits[r] += ws[t].reg_hits[r];
     }
     printf("xstate_probe isa=%s mode=%s threads=%d seconds=%d iterations=%lld traps=%lld\n", use_avx512 ? "avx512" : "avx2", mode, threads, seconds, iterations, traps);
-    printf("  handler clobbers volatile vector state: %s, handler yields: %s, redirect: %s\n",
-           clobber ? "yes" : "no", handler_yield ? "yes" : "no", redirect ? "yes" : "no");
+    printf("  handler clobbers volatile vector state: %s, handler yields: %s, redirect: %s, sparse: %s%s\n",
+           clobber ? "yes" : "no", handler_yield ? "yes" : "no", redirect ? "yes" : "no", sparse ? "yes" : "no",
+           sparse_vzeroupper ? " (vzeroupper before the trap)" : "");
 #ifdef _WIN32
     printf("  first trap: CONTEXT.ContextFlags=0x%llx, GetXStateFeaturesMask=0x%llx (-2: call failed)\n",
            first_flags, first_xstate_mask);
