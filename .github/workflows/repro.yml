@@ -19,9 +19,9 @@ on:
       seconds_probe:
         default: '15'
       mode:
-        description: full (probe + reproducers), probe (native probe only), diag (probe + GC/safepoint/oop-map diagnostics)
+        description: full (probe + reproducers), probe (native probe only), diag (probe + GC/safepoint/oop-map diagnostics), sweep (StressSeed sweep of the Vector API reproducer)
         type: choice
-        options: [full, probe, diag]
+        options: [full, probe, diag, sweep]
         default: full
 
 jobs:

@@ -96,6 +96,14 @@ for spec in $JDKS; do
   echo "$jdk	$version	$flags" >> out/jdks.tsv
   rm -rf classes
   "$JDK_PATH/bin/javac" --add-modules jdk.incubator.vector -d classes Repro.java ScalarRepro.java 2>&1 | grep -v -i warning
+  if [ "${MODE:-full}" = sweep ]; then
+    # StressSeed sweep: a seed fixes one compile shape per JDK build, so each JDK needs its own crashing seeds
+    for seed in $SEEDS; do
+      run_java "$jdk" vector-field "$seed"
+      [ "$jdk" = ea ] && run_java "$jdk" vector-field "$seed" -XX:+UseFPUForSpilling
+    done
+    continue
+  fi
   if [ "${MODE:-full}" = diag ]; then
     for seed in $SEEDS; do
       run_java "$jdk" oopmap "$seed"
