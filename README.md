@@ -17,8 +17,9 @@ From the runs linked below (each Windows job lands on a random runner CPU):
 - Temurin 26.0.2.1+1, `Repro field` with `-XX:StressSeed=31677`, `87112` or `95029`: crashes on every
   Windows AVX-512 runner tried (Intel Xeon Platinum 8573C, AMD EPYC 9V45, AMD EPYC 9V74), usually within a
   second. Never on the AVX2-only Windows runners (AMD EPYC 7763), never on Linux runners with the same or
-  similar CPUs (EPYC 9V45, Xeon 8370C, Xeon 6975P-C), never with `-XX:UseAVX=2`, never with
-  `-XX:-UseFPUForSpilling`.
+  similar CPUs (EPYC 9V45, EPYC 9V74, Xeon 8370C, Xeon 6975P-C), never with `-XX:UseAVX=2`.
+  `-XX:-UseFPUForSpilling` (no references in XMM registers) avoids the crash but not the corruption: with it,
+  Temurin 27.0.1 (seeds 13, 25) and 28-ea+24 (seeds 25, 29) give wrong results.
 - The C2 code is the same on Linux: for seed 31677 the poll's oop map is `{rbx=Oop r13=Oop xmm6=Oop
   xmm19=Oop}` on both systems, and only Windows reloads 0 from `xmm19`.
 - Safepoints are required, GC is not: it crashes with Epsilon GC (no collection at all) plus
@@ -56,8 +57,9 @@ StressSeed sweep 1-60 (8 s each, `Repro field`):
 
 ## Runs
 
-- Full matrix, Temurin 26/27/28-ea, 8 Windows + 3 Linux jobs:
-  https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/43765173012
+- Full matrix with the committed defaults (12 seeds, Temurin 26/27/28-ea, 8 Windows + 3 Linux jobs):
+  https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/43771266364
+- First full matrix (3 seeds): https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/43765173012
 - Native probe variants: https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/43766752583,
   https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/43769193115
 - GC / safepoint / oop-map diagnostics: https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/43767421432
@@ -77,4 +79,4 @@ clang -O2 -o xstate_probe native/xstate_probe.c && ./xstate_probe seh 15 4
 Exit code 0 means no corruption, 3 a wrong result; a JVM crash writes an `hs_err` file. The seeds above are
 for the listed builds; another build needs its own (run the `sweep` mode).
 
-Workaround: `-XX:UseAVX=2` (C2 then has no upper-bank registers).
+Workaround: `-XX:UseAVX=2` (C2 then has no upper-bank registers); the only configuration that never failed.
