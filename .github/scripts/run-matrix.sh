@@ -16,10 +16,13 @@ isa=$($exe nofault 1 1 | sed -n 's/.*isa=\([a-z0-9]*\).*/\1/p')
 [ -z "$isa" ] && isa=none
 echo "$isa" > out/isa.txt
 
-for probe in "fault 4" "nofault 4" "fault 16"; do
+# mode threads env (env: comma-separated XSTATE_PROBE_* switches, or -)
+for probe in "fault 4 -" "seh 4 -" "fault 4 CLOBBER" "seh 4 CLOBBER" "seh 8 HANDLER_YIELD" "seh 8 CLOBBER,HANDLER_YIELD" "nofault 4 -"; do
   set -- $probe
-  log=out/logs/probe-$1-$2.log
-  $exe "$1" "$SECONDS_PROBE" "$2" > "$log" 2>&1
+  envs=()
+  if [ "$3" != - ]; then for e in ${3//,/ }; do envs+=("XSTATE_PROBE_$e=1"); done; fi
+  log=out/logs/probe-$1-$2-${3//,/_}.log
+  env "${envs[@]}" $exe "$1" "$SECONDS_PROBE" "$2" > "$log" 2>&1
   code=$?
   cat "$log"
   case $code in
@@ -27,9 +30,10 @@ for probe in "fault 4" "nofault 4" "fault 16"; do
     3) result=CORRUPTED ;;
     *) result="exit $code" ;;
   esac
-  detail=$(grep -E 'corrupted iterations [1-9]|registers hit: .' "$log" | sed 's/^ *//' | tr '\n' ';' | tr -s ' ')
-  row native "xstate_probe $1" "threads=$2" - "$result" "$detail"
+  detail=$(grep -E 'first trap|corrupted iterations [1-9]|registers hit: .' "$log" | sed 's/^ *//' | tr '\n' ';' | tr -s ' ')
+  row native "xstate_probe $1" "threads=$2 $3" - "$result" "$detail"
 done
+[ "${PROBE_ONLY:-false}" = true ] && exit 0
 
 # java <jdk> <test> <seed> <flags...>; classifies by exit code and hs_err presence
 run_java() {

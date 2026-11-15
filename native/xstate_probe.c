@@ -11,9 +11,14 @@
  *   xmm0-15 low 128 bits (SSE), ymm0-15 bits 128-255 (AVX), zmm0-15 bits 256-511
  *   (ZMM_Hi256), zmm16-31 (Hi16_ZMM), k1-k7 (opmask).
  *
- * Usage: xstate_probe <fault|nofault> <seconds> <threads>
- *   fault    the load traps every iteration (the case under test)
+ * Usage: xstate_probe <fault|seh|nofault> <seconds> <threads>
+ *   fault    the load traps every iteration; a vectored exception handler resumes it
+ *   seh      Windows: the trap is in generated code registered with RtlAddFunctionTable and a
+ *            language handler resumes it, which is how HotSpot handles a safepoint poll on x64
+ *            (Linux: same as fault)
  *   nofault  the page is readable (control: only interrupts and preemption)
+ * Environment: XSTATE_PROBE_CLOBBER=1 makes the handler zero the volatile vector registers before
+ * resuming; XSTATE_PROBE_HANDLER_YIELD=1 makes it yield the CPU; XSTATE_PROBE_SELF_TEST=1 flips a bit of xmm0 in the saved context (must report corruption).
  * Exit code: 0 no corruption, 3 corruption seen, 2 neither AVX-512 nor AVX2.
  * On a host without AVX-512 it falls back to ymm0-15 (SSE and AVX components only).
  *
@@ -31,6 +36,7 @@
 #include <windows.h>
 #else
 #include <pthread.h>
+#include <sched.h>
 #include <signal.h>
 #include <sys/mman.h>
 #include <ucontext.h>
@@ -49,8 +55,74 @@ static const char *component_names[C_COUNT] = {
 
 static volatile int fault_mode;
 static int self_test; /* XSTATE_PROBE_SELF_TEST=1: the handler flips a bit of xmm0 in the saved context */
+/* XSTATE_PROBE_CLOBBER=1: the handler zeroes the vector registers the ABI makes volatile (ymm and zmm upper
+ * halves, zmm16-31, k1-k7) before resuming, as handler code using AVX-512 may. The OS must restore them
+ * from the saved context on resume; corruption in this mode means it does not. */
+static int clobber;
+/* XSTATE_PROBE_HANDLER_YIELD=1: the handler gives up its time slice (SwitchToThread / sched_yield), so the
+ * thread is usually switched out while the exception is being dispatched, as a JVM thread may be. */
+static int handler_yield;
+static int use_avx512;
+static volatile long long first_flags = -1;
+static volatile long long first_xstate_mask = -1;
+
+__attribute__((noinline, target("avx512f")))
+static void clobber_avx512(void) {
+    __asm__ volatile(
+        "vzeroall\n\t"
+        "vpxord %%zmm16, %%zmm16, %%zmm16\n\t"
+        "vpxord %%zmm17, %%zmm17, %%zmm17\n\t"
+        "vpxord %%zmm18, %%zmm18, %%zmm18\n\t"
+        "vpxord %%zmm19, %%zmm19, %%zmm19\n\t"
+        "vpxord %%zmm20, %%zmm20, %%zmm20\n\t"
+        "vpxord %%zmm21, %%zmm21, %%zmm21\n\t"
+        "vpxord %%zmm22, %%zmm22, %%zmm22\n\t"
+        "vpxord %%zmm23, %%zmm23, %%zmm23\n\t"
+        "vpxord %%zmm24, %%zmm24, %%zmm24\n\t"
+        "vpxord %%zmm25, %%zmm25, %%zmm25\n\t"
+        "vpxord %%zmm26, %%zmm26, %%zmm26\n\t"
+        "vpxord %%zmm27, %%zmm27, %%zmm27\n\t"
+        "vpxord %%zmm28, %%zmm28, %%zmm28\n\t"
+        "vpxord %%zmm29, %%zmm29, %%zmm29\n\t"
+        "vpxord %%zmm30, %%zmm30, %%zmm30\n\t"
+        "vpxord %%zmm31, %%zmm31, %%zmm31\n\t"
+        "kxorw %%k1, %%k1, %%k1\n\t"
+        "kxorw %%k2, %%k2, %%k2\n\t"
+        "kxorw %%k3, %%k3, %%k3\n\t"
+        "kxorw %%k4, %%k4, %%k4\n\t"
+        "kxorw %%k5, %%k5, %%k5\n\t"
+        "kxorw %%k6, %%k6, %%k6\n\t"
+        "kxorw %%k7, %%k7, %%k7\n\t"
+        ::: "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
+            "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
+            "xmm16", "xmm17", "xmm18", "xmm19", "xmm20", "xmm21", "xmm22", "xmm23",
+            "xmm24", "xmm25", "xmm26", "xmm27", "xmm28", "xmm29", "xmm30", "xmm31",
+            "k1", "k2", "k3", "k4", "k5", "k6", "k7");
+}
+
+__attribute__((noinline, target("avx")))
+static void clobber_avx(void) {
+    __asm__ volatile("vzeroall" ::: "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
+                     "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15");
+}
+
+static void yield_now(void) {
+#ifdef _WIN32
+    SwitchToThread();
+#else
+    sched_yield();
+#endif
+}
+
+static void clobber_volatile_state(void) {
+    if (use_avx512) clobber_avx512(); else clobber_avx();
+}
 static volatile long long deadline_ns;
 static unsigned char *trap_page;
+/* Generated code: `test ecx, [rbx]; ret` (85 0B C3). In seh mode it is covered by a function table
+ * entry whose language handler resumes it, as a JIT that registers its code heap does. */
+static unsigned char *trap_thunk;
+static int seh_mode;
 
 typedef struct {
     int id;
@@ -87,8 +159,6 @@ static int avx2_usable(void) {
     return (b & (1u << 5)) != 0;
 }
 
-static int use_avx512;
-
 static int avx512_usable(void) {
     unsigned a, b, c, d;
     if (!__get_cpuid(1, &a, &b, &c, &d) || !(c & (1u << 27))) return 0; /* OSXSAVE */
@@ -107,9 +177,60 @@ static LONG CALLBACK on_exception(PEXCEPTION_POINTERS info) {
         info->ContextRecord->Rip += 2; /* skip `test ecx, [rbx]` (85 0B) */
         thread_traps++;
         if (self_test) info->ContextRecord->Xmm0.Low ^= 1; /* proves detection works */
+        if (first_flags < 0) {
+            DWORD64 mask = 0;
+            first_xstate_mask = GetXStateFeaturesMask(info->ContextRecord, &mask) ? (long long) mask : -2;
+            first_flags = info->ContextRecord->ContextFlags;
+        }
+        if (clobber) clobber_volatile_state();
+        if (handler_yield) yield_now();
         return EXCEPTION_CONTINUE_EXECUTION;
     }
     return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static EXCEPTION_DISPOSITION on_frame_exception(PEXCEPTION_RECORD r, ULONG64 frame, PCONTEXT ctx, PDISPATCHER_CONTEXT dc) {
+    (void) frame; (void) dc;
+    if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2
+            && (unsigned char *) r->ExceptionInformation[1] == trap_page) {
+        ctx->Rip += 2;
+        thread_traps++;
+        if (self_test) ctx->Xmm0.Low ^= 1;
+        if (first_flags < 0) {
+            DWORD64 mask = 0;
+            first_xstate_mask = GetXStateFeaturesMask(ctx, &mask) ? (long long) mask : -2;
+            first_flags = ctx->ContextFlags;
+        }
+        if (clobber) clobber_volatile_state();
+        if (handler_yield) yield_now();
+        return ExceptionContinueExecution;
+    }
+    return ExceptionContinueSearch;
+}
+
+/* Registers the thunk with RtlAddFunctionTable: a leaf entry whose UNWIND_INFO names a language
+ * handler (UNW_FLAG_EHANDLER) that jumps to on_frame_exception. */
+static void install_function_table(unsigned char *base) {
+    unsigned char *stub = base + 16;           /* mov rax, imm64; jmp rax */
+    stub[0] = 0x48; stub[1] = 0xB8;
+    uint64_t target = (uint64_t) (uintptr_t) on_frame_exception;
+    memcpy(stub + 2, &target, 8);
+    stub[10] = 0xFF; stub[11] = 0xE0;
+    unsigned char *unwind = base + 32;          /* UNWIND_INFO */
+    unwind[0] = 1 | (UNW_FLAG_EHANDLER << 3);  /* version 1, exception handler */
+    unwind[1] = 0;                              /* prolog size */
+    unwind[2] = 0;                              /* unwind codes */
+    unwind[3] = 0;                              /* frame register */
+    uint32_t handler_rva = 16;
+    memcpy(unwind + 4, &handler_rva, 4);
+    static RUNTIME_FUNCTION rf;
+    rf.BeginAddress = 0;
+    rf.EndAddress = 3;
+    rf.UnwindData = 32;
+    if (!RtlAddFunctionTable(&rf, 1, (DWORD64) (uintptr_t) base)) {
+        fprintf(stderr, "RtlAddFunctionTable failed\n");
+        exit(1);
+    }
 }
 #else
 static void on_segv(int sig, siginfo_t *si, void *uc_) {
@@ -119,6 +240,8 @@ static void on_segv(int sig, siginfo_t *si, void *uc_) {
         uc->uc_mcontext.gregs[REG_RIP] += 2;
         thread_traps++;
         if (self_test) uc->uc_mcontext.fpregs->_xmm[0].element[0] ^= 1; /* proves detection works */
+        if (clobber) clobber_volatile_state();
+        if (handler_yield) yield_now();
         return;
     }
     signal(SIGSEGV, SIG_DFL);
@@ -128,6 +251,7 @@ static void on_segv(int sig, siginfo_t *si, void *uc_) {
 /* Loads zmm0-31 and k1-k7 from `in`, executes the (possibly trapping) load, stores all back to `out`. */
 __attribute__((noinline, target("avx512f")))
 static void round_trip(const uint64_t *in, uint64_t *out, const uint16_t *kin, uint16_t *kout, unsigned char *page) {
+    register void *thunk __asm__("r8") = trap_thunk;
     __asm__ volatile(
         "vmovdqu64 0*64(%%rax), %%zmm0\n\t"  "vmovdqu64 1*64(%%rax), %%zmm1\n\t"
         "vmovdqu64 2*64(%%rax), %%zmm2\n\t"  "vmovdqu64 3*64(%%rax), %%zmm3\n\t"
@@ -148,7 +272,7 @@ static void round_trip(const uint64_t *in, uint64_t *out, const uint16_t *kin, u
         "kmovw 0(%%rsi), %%k1\n\t"  "kmovw 2(%%rsi), %%k2\n\t"  "kmovw 4(%%rsi), %%k3\n\t"
         "kmovw 6(%%rsi), %%k4\n\t"  "kmovw 8(%%rsi), %%k5\n\t"  "kmovw 10(%%rsi), %%k6\n\t"
         "kmovw 12(%%rsi), %%k7\n\t"
-        ".byte 0x85, 0x0b\n\t" /* test ecx, [rbx]: traps when the page is no-access */
+        "sub $128, %%rsp\n\t" "call *%%r8\n\t" "add $128, %%rsp\n\t" /* thunk: test ecx, [rbx]; ret (traps when the page is no-access) */
         "vmovdqu64 %%zmm0, 0*64(%%rdx)\n\t"  "vmovdqu64 %%zmm1, 1*64(%%rdx)\n\t"
         "vmovdqu64 %%zmm2, 2*64(%%rdx)\n\t"  "vmovdqu64 %%zmm3, 3*64(%%rdx)\n\t"
         "vmovdqu64 %%zmm4, 4*64(%%rdx)\n\t"  "vmovdqu64 %%zmm5, 5*64(%%rdx)\n\t"
@@ -169,7 +293,7 @@ static void round_trip(const uint64_t *in, uint64_t *out, const uint16_t *kin, u
         "kmovw %%k4, 6(%%rdi)\n\t"  "kmovw %%k5, 8(%%rdi)\n\t"  "kmovw %%k6, 10(%%rdi)\n\t"
         "kmovw %%k7, 12(%%rdi)\n\t"
         :
-        : "a"(in), "d"(out), "b"(page), "S"(kin), "D"(kout), "c"(0)
+        : "a"(in), "d"(out), "b"(page), "S"(kin), "D"(kout), "c"(0), "r"(thunk)
         : "memory", "cc",
           "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
           "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
@@ -182,6 +306,7 @@ static void round_trip(const uint64_t *in, uint64_t *out, const uint16_t *kin, u
 /* AVX2-only hosts: ymm0-15 only. */
 __attribute__((noinline, target("avx2")))
 static void round_trip_avx2(const uint64_t *in, uint64_t *out, const uint16_t *kin, uint16_t *kout, unsigned char *page) {
+    register void *thunk __asm__("r8") = trap_thunk;
     (void) kin; (void) kout;
     __asm__ volatile(
         "vmovdqu 0*64(%%rax), %%ymm0\n\t"
@@ -200,7 +325,7 @@ static void round_trip_avx2(const uint64_t *in, uint64_t *out, const uint16_t *k
         "vmovdqu 13*64(%%rax), %%ymm13\n\t"
         "vmovdqu 14*64(%%rax), %%ymm14\n\t"
         "vmovdqu 15*64(%%rax), %%ymm15\n\t"
-        ".byte 0x85, 0x0b\n\t"
+        "sub $128, %%rsp\n\t" "call *%%r8\n\t" "add $128, %%rsp\n\t" /* thunk: test ecx, [rbx]; ret (traps when the page is no-access) */
         "vmovdqu %%ymm0, 0*64(%%rdx)\n\t"
         "vmovdqu %%ymm1, 1*64(%%rdx)\n\t"
         "vmovdqu %%ymm2, 2*64(%%rdx)\n\t"
@@ -218,7 +343,7 @@ static void round_trip_avx2(const uint64_t *in, uint64_t *out, const uint16_t *k
         "vmovdqu %%ymm14, 14*64(%%rdx)\n\t"
         "vmovdqu %%ymm15, 15*64(%%rdx)\n\t"
         :
-        : "a"(in), "d"(out), "b"(page), "c"(0)
+        : "a"(in), "d"(out), "b"(page), "c"(0), "r"(thunk)
         : "memory", "cc",
           "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
           "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15");
@@ -297,8 +422,8 @@ int main(int argc, char **argv) {
     const char *mode = argc > 1 ? argv[1] : "fault";
     int seconds = argc > 2 ? atoi(argv[2]) : 10;
     int threads = argc > 3 ? atoi(argv[3]) : 4;
-    if (strcmp(mode, "fault") && strcmp(mode, "nofault")) {
-        fprintf(stderr, "mode: fault or nofault\n");
+    if (strcmp(mode, "fault") && strcmp(mode, "nofault") && strcmp(mode, "seh")) {
+        fprintf(stderr, "mode: fault, seh or nofault\n");
         return 1;
     }
     use_avx512 = avx512_usable();
@@ -306,13 +431,20 @@ int main(int argc, char **argv) {
         printf("xstate_probe: neither AVX-512 nor AVX2 available, skipped\n");
         return 2;
     }
-    fault_mode = !strcmp(mode, "fault");
+    seh_mode = !strcmp(mode, "seh");
+    fault_mode = seh_mode || !strcmp(mode, "fault");
     self_test = getenv("XSTATE_PROBE_SELF_TEST") != NULL;
+    clobber = getenv("XSTATE_PROBE_CLOBBER") != NULL;
+    handler_yield = getenv("XSTATE_PROBE_HANDLER_YIELD") != NULL;
 #ifdef _WIN32
     trap_page = VirtualAlloc(NULL, 4096, MEM_RESERVE | MEM_COMMIT, fault_mode ? PAGE_NOACCESS : PAGE_READONLY);
-    AddVectoredExceptionHandler(1, on_exception);
+    trap_thunk = VirtualAlloc(NULL, 4096, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    trap_thunk[0] = 0x85; trap_thunk[1] = 0x0B; trap_thunk[2] = 0xC3;
+    if (seh_mode) install_function_table(trap_thunk); else AddVectoredExceptionHandler(1, on_exception);
 #else
     trap_page = mmap(NULL, 4096, fault_mode ? PROT_NONE : PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    trap_thunk = mmap(NULL, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    trap_thunk[0] = 0x85; trap_thunk[1] = 0x0B; trap_thunk[2] = 0xC3;
     struct sigaction sa;
     memset(&sa, 0, sizeof sa);
     sa.sa_sigaction = on_segv;
@@ -348,6 +480,12 @@ int main(int argc, char **argv) {
         for (int r = 0; r < NREG; r++) reg_hits[r] += ws[t].reg_hits[r];
     }
     printf("xstate_probe isa=%s mode=%s threads=%d seconds=%d iterations=%lld traps=%lld\n", use_avx512 ? "avx512" : "avx2", mode, threads, seconds, iterations, traps);
+    printf("  handler clobbers volatile vector state: %s, handler yields: %s\n", clobber ? "yes" : "no",
+           handler_yield ? "yes" : "no");
+#ifdef _WIN32
+    printf("  first trap: CONTEXT.ContextFlags=0x%llx, GetXStateFeaturesMask=0x%llx (-2: call failed)\n",
+           first_flags, first_xstate_mask);
+#endif
     for (int c = 0; c < C_COUNT; c++) {
         printf("  %-18s corrupted iterations %lld (read back as zero: %lld)\n", component_names[c], bad[c], bad_zero[c]);
         total_bad += bad[c];
