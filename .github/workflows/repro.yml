@@ -1,0 +1,170 @@
+name: repro
+
+on:
+  workflow_dispatch:
+    inputs:
+      windows_slots:
+        description: Parallel Windows jobs (JSON list; each lands on a random runner CPU)
+        default: '[1, 2, 3, 4, 5, 6, 7, 8]'
+      linux_slots:
+        description: Parallel Linux jobs (JSON list)
+        default: '[1, 2, 3]'
+      seeds:
+        description: StressSeed values for the Vector API reproducer
+        default: '87112 31677 95029'
+      seconds_java:
+        default: '20'
+      seconds_vector:
+        default: '15'
+      seconds_probe:
+        default: '15'
+
+jobs:
+  windows:
+    name: windows (${{ matrix.slot }})
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: ${{ fromJSON(inputs.windows_slots) }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ea
+        continue-on-error: true
+        uses: oracle-actions/setup-java@v1
+        with:
+          website: jdk.java.net
+          release: EA
+      - name: Remember the EA JDK
+        if: steps.ea.outcome == 'success'
+        shell: bash
+        run: echo "JDK_EA=$JAVA_HOME" >> "$GITHUB_ENV"
+      - id: jdk27
+        continue-on-error: true
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '27'
+      - id: jdk26
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+      - name: Host
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim()
+          $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+          $cs = Get-CimInstance Win32_ComputerSystem
+          $build = "$($v.ProductName) $($v.DisplayVersion) $($v.CurrentBuild).$($v.UBR) ($($cs.Manufacturer) $($cs.Model))"
+          "windows" | Out-File -NoNewline -Encoding ascii out/os.txt
+          $cpu | Out-File -NoNewline -Encoding ascii out/cpu.txt
+          $build | Out-File -NoNewline -Encoding ascii out/build.txt
+          "CPU: $cpu"; "OS: $build"
+      - name: Build the native probe
+        shell: bash
+        run: clang -O2 -o xstate_probe.exe native/xstate_probe.c
+      - name: Run
+        shell: bash
+        env:
+          SEEDS: ${{ inputs.seeds }}
+          SECONDS_JAVA: ${{ inputs.seconds_java }}
+          SECONDS_VECTOR: ${{ inputs.seconds_vector }}
+          SECONDS_PROBE: ${{ inputs.seconds_probe }}
+        run: |
+          JDKS="temurin-26=$(cygpath -u "${{ steps.jdk26.outputs.path }}")"
+          [ -n "${{ steps.jdk27.outputs.path }}" ] && JDKS="$JDKS temurin-27=$(cygpath -u "${{ steps.jdk27.outputs.path }}")"
+          [ -n "${JDK_EA:-}" ] && JDKS="$JDKS ea=$(cygpath -u "$JDK_EA")"
+          export JDKS
+          bash .github/scripts/run-matrix.sh
+          printf '| cpu | jdk | test | flags | seed | result |\n|---|---|---|---|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+          awk -F'\t' '{print "| "$2" | "$5" | "$6" | "$7" | "$8" | "$9" |"}' out/results.tsv >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-${{ matrix.slot }}
+          path: out
+          retention-days: 90
+
+  linux:
+    name: linux (${{ matrix.slot }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: ${{ fromJSON(inputs.linux_slots) }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ea
+        continue-on-error: true
+        uses: oracle-actions/setup-java@v1
+        with:
+          website: jdk.java.net
+          release: EA
+      - name: Remember the EA JDK
+        if: steps.ea.outcome == 'success'
+        run: echo "JDK_EA=$JAVA_HOME" >> "$GITHUB_ENV"
+      - id: jdk27
+        continue-on-error: true
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '27'
+      - id: jdk26
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+      - name: Host
+        run: |
+          mkdir -p out
+          printf linux > out/os.txt
+          lscpu | sed -n 's/^Model name: *//p' | head -1 | tr -d '\n' > out/cpu.txt
+          printf '%s %s (%s)' "$(. /etc/os-release; echo "$PRETTY_NAME")" "$(uname -r)" "$(systemd-detect-virt 2>/dev/null || echo unknown)" > out/build.txt
+          echo "CPU: $(cat out/cpu.txt)"; echo "OS: $(cat out/build.txt)"
+          grep -o -w -E 'avx512f|avx512vl|avx512bw' /proc/cpuinfo | sort -u | tr '\n' ' '; echo
+      - name: Build the native probe
+        run: gcc -O2 -pthread -o xstate_probe native/xstate_probe.c
+      - name: Run
+        env:
+          SEEDS: ${{ inputs.seeds }}
+          SECONDS_JAVA: ${{ inputs.seconds_java }}
+          SECONDS_VECTOR: ${{ inputs.seconds_vector }}
+          SECONDS_PROBE: ${{ inputs.seconds_probe }}
+        run: |
+          JDKS="temurin-26=${{ steps.jdk26.outputs.path }}"
+          [ -n "${{ steps.jdk27.outputs.path }}" ] && JDKS="$JDKS temurin-27=${{ steps.jdk27.outputs.path }}"
+          [ -n "${JDK_EA:-}" ] && JDKS="$JDKS ea=$JDK_EA"
+          export JDKS
+          bash .github/scripts/run-matrix.sh
+          printf '| cpu | jdk | test | flags | seed | result |\n|---|---|---|---|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+          awk -F'\t' '{print "| "$2" | "$5" | "$6" | "$7" | "$8" | "$9" |"}' out/results.tsv >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-${{ matrix.slot }}
+          path: out
+          retention-days: 90
+
+  summary:
+    needs: [windows, linux]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: all
+      - name: Summarize
+        run: |
+          python3 .github/scripts/summarize.py all > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat summary.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: summary
+          path: summary.md
+          retention-days: 90
