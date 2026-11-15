@@ -10,12 +10,12 @@ on:
         description: Parallel Linux jobs (JSON list)
         default: '[1, 2, 3]'
       seeds:
-        description: StressSeed values for the Vector API reproducer
-        default: '87112 31677 95029'
+        description: StressSeed values for the Vector API reproducer (a seed fixes one compile shape per JDK build; see README)
+        default: '31677 87112 95029 8 17 13 18 25 39 6 7 29'
       seconds_java:
         default: '20'
       seconds_vector:
-        default: '15'
+        default: '8'
       seconds_probe:
         default: '15'
       mode:
