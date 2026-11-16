@@ -17,7 +17,7 @@ isa=$($exe nofault 1 1 | sed -n 's/.*isa=\([a-z0-9]*\).*/\1/p')
 echo "$isa" > out/isa.txt
 
 # mode threads env (env: comma-separated XSTATE_PROBE_* switches, or -)
-for probe in "fault 4 -" "seh 4 -" "fault 4 CLOBBER" "seh 4 CLOBBER" "seh 8 HANDLER_YIELD" "seh 8 CLOBBER,HANDLER_YIELD" "seh 4 REDIRECT" "seh 8 REDIRECT,CLOBBER,HANDLER_YIELD" "seh 4 SPARSE" "seh 4 SPARSE,VZEROUPPER" "seh 8 SPARSE,REDIRECT,HANDLER_YIELD" "fault 4 SPARSE,VZEROUPPER" "seh 8 SPIN=20000000" "seh 16 SPIN=20000000,NOISE" "fault 8 SPIN=50000000" "seh 8 SPIN=20000000,REDIRECT,HANDLER_YIELD" "nofault 8 SPIN=20000000"; do
+for probe in "fault 4 -" "seh 4 -" "fault 4 CLOBBER" "seh 4 CLOBBER" "seh 8 HANDLER_YIELD" "seh 8 CLOBBER,HANDLER_YIELD" "seh 4 REDIRECT" "seh 8 REDIRECT,CLOBBER,HANDLER_YIELD" "seh 4 SPARSE" "seh 4 SPARSE,VZEROUPPER" "seh 8 SPARSE,REDIRECT,HANDLER_YIELD" "fault 4 SPARSE,VZEROUPPER" "seh 4 JVMLIKE=20" "seh 8 JVMLIKE=20" "fault 8 JVMLIKE=20" "seh 16 JVMLIKE=50,NOISE"; do
   set -- $probe
   envs=()
   if [ "$3" != - ]; then for e in ${3//,/ }; do case $e in *=*) envs+=("XSTATE_PROBE_$e");; *) envs+=("XSTATE_PROBE_$e=1");; esac; done; fi

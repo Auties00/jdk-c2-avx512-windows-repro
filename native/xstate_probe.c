@@ -72,6 +72,7 @@ static int sparse;
  * while it compiles, commits heap and metaspace and runs safepoints. */
 static int noise;
 static long long spin_iterations;
+static long long jvmlike_traps;
 static volatile int noise_stop;
 static int sparse_vzeroupper;
 static int use_avx512;
@@ -135,6 +136,9 @@ static unsigned char *trap_page;
  * entry whose language handler resumes it, as a JIT that registers its code heap does. */
 static unsigned char *trap_thunk;
 static int seh_mode;
+#ifdef _WIN32
+extern void probe_blob(void);
+#endif
 
 typedef struct {
     int id;
@@ -186,7 +190,8 @@ static LONG CALLBACK on_exception(PEXCEPTION_POINTERS info) {
     PEXCEPTION_RECORD r = info->ExceptionRecord;
     if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2
             && (unsigned char *) r->ExceptionInformation[1] == trap_page) {
-        if (redirect) info->ContextRecord->Rip = (DWORD64) (uintptr_t) (trap_thunk + 8);
+        if (jvmlike_traps > 0) info->ContextRecord->Rip = (DWORD64) (uintptr_t) probe_blob;
+        else if (redirect) info->ContextRecord->Rip = (DWORD64) (uintptr_t) (trap_thunk + 8);
         else info->ContextRecord->Rip += 2; /* skip `test ecx, [rbx]` (85 0B) */
         thread_traps++;
         if (self_test) info->ContextRecord->Xmm0.Low ^= 1; /* proves detection works */
@@ -206,7 +211,8 @@ static EXCEPTION_DISPOSITION on_frame_exception(PEXCEPTION_RECORD r, ULONG64 fra
     (void) frame; (void) dc;
     if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2
             && (unsigned char *) r->ExceptionInformation[1] == trap_page) {
-        if (redirect) ctx->Rip = (DWORD64) (uintptr_t) (trap_thunk + 8); else ctx->Rip += 2;
+        if (jvmlike_traps > 0) ctx->Rip = (DWORD64) (uintptr_t) probe_blob;
+        else if (redirect) ctx->Rip = (DWORD64) (uintptr_t) (trap_thunk + 8); else ctx->Rip += 2;
         thread_traps++;
         if (self_test) ctx->Xmm0.Low ^= 1;
         if (first_flags < 0) {
@@ -515,6 +521,110 @@ static void round_trip_spin(const uint64_t *in, uint64_t *out, unsigned char *pa
           "xmm24", "xmm25", "xmm26", "xmm27", "xmm28", "xmm29", "xmm30", "xmm31");
 }
 
+#ifdef _WIN32
+/* JVM-like variant (XSTATE_PROBE_JVMLIKE=<traps>, Windows): zmm16-31 are written once; the thread then
+ * traps <traps> times in a row without rewriting them. The handler resumes each trap in probe_blob, which
+ * does what the JVM's safepoint handler blob does: save zmm16-31 to the stack, block in the kernel
+ * (Sleep(1), like a thread waiting for a safepoint to end), reload zmm16-31, return. */
+void (*probe_sleep)(unsigned long);
+extern void probe_blob(void);
+__asm__(
+    ".text\n"
+    ".globl probe_blob\n"
+    "probe_blob:\n"
+    "push %rax\n" "push %rcx\n" "push %rdx\n" "push %r8\n" "push %r9\n" "push %r10\n" "push %r11\n"
+    "sub $1056, %rsp\n"
+    "vmovdqu64 %zmm16, 32(%rsp)\n"
+    "vmovdqu64 %zmm17, 96(%rsp)\n"
+    "vmovdqu64 %zmm18, 160(%rsp)\n"
+    "vmovdqu64 %zmm19, 224(%rsp)\n"
+    "vmovdqu64 %zmm20, 288(%rsp)\n"
+    "vmovdqu64 %zmm21, 352(%rsp)\n"
+    "vmovdqu64 %zmm22, 416(%rsp)\n"
+    "vmovdqu64 %zmm23, 480(%rsp)\n"
+    "vmovdqu64 %zmm24, 544(%rsp)\n"
+    "vmovdqu64 %zmm25, 608(%rsp)\n"
+    "vmovdqu64 %zmm26, 672(%rsp)\n"
+    "vmovdqu64 %zmm27, 736(%rsp)\n"
+    "vmovdqu64 %zmm28, 800(%rsp)\n"
+    "vmovdqu64 %zmm29, 864(%rsp)\n"
+    "vmovdqu64 %zmm30, 928(%rsp)\n"
+    "vmovdqu64 %zmm31, 992(%rsp)\n"
+    "mov $1, %ecx\n"
+    "call *probe_sleep(%rip)\n"
+    "vmovdqu64 32(%rsp), %zmm16\n"
+    "vmovdqu64 96(%rsp), %zmm17\n"
+    "vmovdqu64 160(%rsp), %zmm18\n"
+    "vmovdqu64 224(%rsp), %zmm19\n"
+    "vmovdqu64 288(%rsp), %zmm20\n"
+    "vmovdqu64 352(%rsp), %zmm21\n"
+    "vmovdqu64 416(%rsp), %zmm22\n"
+    "vmovdqu64 480(%rsp), %zmm23\n"
+    "vmovdqu64 544(%rsp), %zmm24\n"
+    "vmovdqu64 608(%rsp), %zmm25\n"
+    "vmovdqu64 672(%rsp), %zmm26\n"
+    "vmovdqu64 736(%rsp), %zmm27\n"
+    "vmovdqu64 800(%rsp), %zmm28\n"
+    "vmovdqu64 864(%rsp), %zmm29\n"
+    "vmovdqu64 928(%rsp), %zmm30\n"
+    "vmovdqu64 992(%rsp), %zmm31\n"
+    "add $1056, %rsp\n"
+    "pop %r11\n" "pop %r10\n" "pop %r9\n" "pop %r8\n" "pop %rdx\n" "pop %rcx\n" "pop %rax\n"
+    "ret\n");
+
+__attribute__((noinline, target("avx512f")))
+static void round_trip_jvmlike(const uint64_t *in, uint64_t *out, unsigned char *page, long long traps) {
+    register void *thunk __asm__("r8") = trap_thunk;
+    __asm__ volatile(
+        "vmovdqu64 16*64(%%rax), %%zmm16\n\t"
+        "vmovdqu64 17*64(%%rax), %%zmm17\n\t"
+        "vmovdqu64 18*64(%%rax), %%zmm18\n\t"
+        "vmovdqu64 19*64(%%rax), %%zmm19\n\t"
+        "vmovdqu64 20*64(%%rax), %%zmm20\n\t"
+        "vmovdqu64 21*64(%%rax), %%zmm21\n\t"
+        "vmovdqu64 22*64(%%rax), %%zmm22\n\t"
+        "vmovdqu64 23*64(%%rax), %%zmm23\n\t"
+        "vmovdqu64 24*64(%%rax), %%zmm24\n\t"
+        "vmovdqu64 25*64(%%rax), %%zmm25\n\t"
+        "vmovdqu64 26*64(%%rax), %%zmm26\n\t"
+        "vmovdqu64 27*64(%%rax), %%zmm27\n\t"
+        "vmovdqu64 28*64(%%rax), %%zmm28\n\t"
+        "vmovdqu64 29*64(%%rax), %%zmm29\n\t"
+        "vmovdqu64 30*64(%%rax), %%zmm30\n\t"
+        "vmovdqu64 31*64(%%rax), %%zmm31\n\t"
+        "mov %%rsi, %%rdi\n\t"
+        "3:\n\t"
+        "mov $200000, %%r9\n\t"
+        "4:\n\t"
+        "dec %%r9\n\t"
+        "jnz 4b\n\t"
+        "sub $128, %%rsp\n\t" "call *%%r8\n\t" "add $128, %%rsp\n\t"
+        "dec %%rdi\n\t"
+        "jnz 3b\n\t"
+        "vmovdqu64 %%zmm16, 16*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm17, 17*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm18, 18*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm19, 19*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm20, 20*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm21, 21*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm22, 22*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm23, 23*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm24, 24*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm25, 25*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm26, 26*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm27, 27*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm28, 28*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm29, 29*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm30, 30*64(%%rdx)\n\t"
+        "vmovdqu64 %%zmm31, 31*64(%%rdx)\n\t"
+        :
+        : "a"(in), "d"(out), "b"(page), "S"(traps), "c"(0), "r"(thunk)
+        : "memory", "cc", "rdi", "r9",
+          "xmm16", "xmm17", "xmm18", "xmm19", "xmm20", "xmm21", "xmm22", "xmm23",
+          "xmm24", "xmm25", "xmm26", "xmm27", "xmm28", "xmm29", "xmm30", "xmm31");
+}
+#endif
+
 static int component_of(int reg, int q) {
     if (reg >= 16) return C_HI16_ZMM;
     if (q < 2) return C_SSE;
@@ -570,6 +680,13 @@ static void *worker_main(void *arg)
             for (int k = 0; k < NK; k++) kin[k] = (uint16_t) ((seed >> (8 * k)) | 0x0101);
             memset(out, 0xEE, sizeof out);
             memset(kout, 0xEE, sizeof kout);
+#ifdef _WIN32
+            if (use_avx512 && jvmlike_traps > 0) {
+                round_trip_jvmlike(in, out, trap_page, jvmlike_traps);
+                for (int i = 0; i < 16 * NQ; i++) out[i] = in[i];
+                memcpy(kout, kin, sizeof kout);
+            } else
+#endif
             if (use_avx512 && spin_iterations > 0) {
                 round_trip_spin(in, out, trap_page, spin_iterations);
                 for (int i = 0; i < 16 * NQ; i++) out[i] = in[i];
@@ -644,6 +761,10 @@ int main(int argc, char **argv) {
     sparse = getenv("XSTATE_PROBE_SPARSE") != NULL;
     noise = getenv("XSTATE_PROBE_NOISE") != NULL;
     spin_iterations = getenv("XSTATE_PROBE_SPIN") ? atoll(getenv("XSTATE_PROBE_SPIN")) : 0;
+    jvmlike_traps = getenv("XSTATE_PROBE_JVMLIKE") ? atoll(getenv("XSTATE_PROBE_JVMLIKE")) : 0;
+#ifdef _WIN32
+    probe_sleep = (void (*)(unsigned long)) Sleep;
+#endif
     sparse_vzeroupper = getenv("XSTATE_PROBE_VZEROUPPER") != NULL;
 #ifdef _WIN32
     trap_page = VirtualAlloc(NULL, 4096, MEM_RESERVE | MEM_COMMIT, fault_mode ? PAGE_NOACCESS : PAGE_READONLY);
@@ -696,9 +817,9 @@ int main(int argc, char **argv) {
         for (int r = 0; r < NREG; r++) reg_hits[r] += ws[t].reg_hits[r];
     }
     printf("xstate_probe isa=%s mode=%s threads=%d seconds=%d iterations=%lld traps=%lld\n", use_avx512 ? "avx512" : "avx2", mode, threads, seconds, iterations, traps);
-    printf("  handler clobbers volatile vector state: %s, handler yields: %s, redirect: %s, sparse: %s%s, noise: %s, spin: %lld\n",
+    printf("  handler clobbers volatile vector state: %s, handler yields: %s, redirect: %s, sparse: %s%s, noise: %s, spin: %lld, jvmlike traps: %lld\n",
            clobber ? "yes" : "no", handler_yield ? "yes" : "no", redirect ? "yes" : "no", sparse ? "yes" : "no",
-           sparse_vzeroupper ? " (vzeroupper before the trap)" : "", noise ? "yes" : "no", spin_iterations);
+           sparse_vzeroupper ? " (vzeroupper before the trap)" : "", noise ? "yes" : "no", spin_iterations, jvmlike_traps);
 #ifdef _WIN32
     printf("  first trap: CONTEXT.ContextFlags=0x%llx, GetXStateFeaturesMask=0x%llx (-2: call failed)\n",
            first_flags, first_xstate_mask);
