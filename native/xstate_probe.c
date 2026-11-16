@@ -761,7 +761,7 @@ int main(int argc, char **argv) {
     sparse = getenv("XSTATE_PROBE_SPARSE") != NULL;
     noise = getenv("XSTATE_PROBE_NOISE") != NULL;
     spin_iterations = getenv("XSTATE_PROBE_SPIN") ? atoll(getenv("XSTATE_PROBE_SPIN")) : 0;
-    jvmlike_traps = getenv("XSTATE_PROBE_JVMLIKE") ? atoll(getenv("XSTATE_PROBE_JVMLIKE")) : 0;
+    jvmlike_traps = use_avx512 && getenv("XSTATE_PROBE_JVMLIKE") ? atoll(getenv("XSTATE_PROBE_JVMLIKE")) : 0;
 #ifdef _WIN32
     probe_sleep = (void (*)(unsigned long)) Sleep;
 #endif
