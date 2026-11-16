@@ -67,6 +67,11 @@ static int handler_yield;
  * the next one, as a JVM resumes a safepoint poll trap in its safepoint handler blob. */
 static int redirect;
 static int sparse;
+/* XSTATE_PROBE_NOISE=1: a thread keeps changing the address space (commit, protect, release: TLB shootdowns)
+ * and calls FlushProcessWriteBuffers (IPIs to every processor running a thread of the process), as a JVM does
+ * while it compiles, commits heap and metaspace and runs safepoints. */
+static int noise;
+static volatile int noise_stop;
 static int sparse_vzeroupper;
 static int use_avx512;
 static volatile long long first_flags = -1;
@@ -466,6 +471,35 @@ static int component_of(int reg, int q) {
 }
 
 #ifdef _WIN32
+static DWORD WINAPI noise_main(LPVOID arg) {
+    (void) arg;
+    while (!noise_stop) {
+        unsigned char *p = VirtualAlloc(NULL, 1 << 20, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        for (int i = 0; i < (1 << 20); i += 4096) p[i] = 1;
+        DWORD old;
+        VirtualProtect(p, 1 << 20, PAGE_NOACCESS, &old);
+        VirtualProtect(p, 1 << 20, PAGE_READWRITE, &old);
+        VirtualFree(p + 65536, 65536, MEM_DECOMMIT);
+        VirtualFree(p, 0, MEM_RELEASE);
+        FlushProcessWriteBuffers();
+    }
+    return 0;
+}
+#else
+static void *noise_main(void *arg) {
+    (void) arg;
+    while (!noise_stop) {
+        unsigned char *p = mmap(NULL, 1 << 20, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        for (int i = 0; i < (1 << 20); i += 4096) p[i] = 1;
+        mprotect(p, 1 << 20, PROT_NONE);
+        mprotect(p, 1 << 20, PROT_READ | PROT_WRITE);
+        munmap(p, 1 << 20);
+    }
+    return 0;
+}
+#endif
+
+#ifdef _WIN32
 static DWORD WINAPI worker_main(LPVOID arg)
 #else
 static void *worker_main(void *arg)
@@ -552,6 +586,7 @@ int main(int argc, char **argv) {
     handler_yield = getenv("XSTATE_PROBE_HANDLER_YIELD") != NULL;
     redirect = getenv("XSTATE_PROBE_REDIRECT") != NULL;
     sparse = getenv("XSTATE_PROBE_SPARSE") != NULL;
+    noise = getenv("XSTATE_PROBE_NOISE") != NULL;
     sparse_vzeroupper = getenv("XSTATE_PROBE_VZEROUPPER") != NULL;
 #ifdef _WIN32
     trap_page = VirtualAlloc(NULL, 4096, MEM_RESERVE | MEM_COMMIT, fault_mode ? PAGE_NOACCESS : PAGE_READONLY);
@@ -576,14 +611,21 @@ int main(int argc, char **argv) {
         ws[t].id = t;
         hs[t] = CreateThread(NULL, 0, worker_main, &ws[t], 0, NULL);
     }
+    HANDLE noise_thread = noise ? CreateThread(NULL, 0, noise_main, NULL, 0, NULL) : NULL;
     WaitForMultipleObjects(threads, hs, TRUE, INFINITE);
+    noise_stop = 1;
+    if (noise_thread) WaitForSingleObject(noise_thread, INFINITE);
 #else
     pthread_t *hs = calloc(threads, sizeof *hs);
     for (int t = 0; t < threads; t++) {
         ws[t].id = t;
         pthread_create(&hs[t], NULL, worker_main, &ws[t]);
     }
+    pthread_t noise_thread;
+    if (noise) pthread_create(&noise_thread, NULL, noise_main, NULL);
     for (int t = 0; t < threads; t++) pthread_join(hs[t], NULL);
+    noise_stop = 1;
+    if (noise) pthread_join(noise_thread, NULL);
 #endif
     long long iterations = 0, traps = 0, bad[C_COUNT] = {0}, bad_zero[C_COUNT] = {0}, total_bad = 0;
     int reg_hits[NREG] = {0};
@@ -597,9 +639,9 @@ int main(int argc, char **argv) {
         for (int r = 0; r < NREG; r++) reg_hits[r] += ws[t].reg_hits[r];
     }
     printf("xstate_probe isa=%s mode=%s threads=%d seconds=%d iterations=%lld traps=%lld\n", use_avx512 ? "avx512" : "avx2", mode, threads, seconds, iterations, traps);
-    printf("  handler clobbers volatile vector state: %s, handler yields: %s, redirect: %s, sparse: %s%s\n",
+    printf("  handler clobbers volatile vector state: %s, handler yields: %s, redirect: %s, sparse: %s%s, noise: %s\n",
            clobber ? "yes" : "no", handler_yield ? "yes" : "no", redirect ? "yes" : "no", sparse ? "yes" : "no",
-           sparse_vzeroupper ? " (vzeroupper before the trap)" : "");
+           sparse_vzeroupper ? " (vzeroupper before the trap)" : "", noise ? "yes" : "no");
 #ifdef _WIN32
     printf("  first trap: CONTEXT.ContextFlags=0x%llx, GetXStateFeaturesMask=0x%llx (-2: call failed)\n",
            first_flags, first_xstate_mask);
