@@ -1,0 +1,82 @@
+name: seq
+
+# Runs native/xstate_seq.c: which sequence of register writes, context switches and exceptions makes Windows
+# deliver an exception CONTEXT without XSTATE components the thread is using.
+
+on:
+  workflow_dispatch:
+    inputs:
+      programs:
+        description: Programs to run (see the header of native/xstate_seq.c)
+        default: 'WT WTT WTTT TT T WTRTR WST WSTT WBT WYT WsT WPT WPTT WTPT TPT TQT TQQQQT WTSWPT WTRBWPTR HT KT LT WTLT WTLPT'
+      seconds:
+        default: '3'
+      threads:
+        default: '4 12'
+
+jobs:
+  seq:
+    name: ${{ matrix.os }} (${{ matrix.slot }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-2022]
+        slot: [1, 2, 3, 4, 5, 6, 7, 8]
+        exclude:
+          - os: windows-2022
+            slot: 3
+          - os: windows-2022
+            slot: 4
+          - os: windows-2022
+            slot: 5
+          - os: windows-2022
+            slot: 6
+          - os: windows-2022
+            slot: 7
+          - os: windows-2022
+            slot: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim()
+          $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+          $cs = Get-CimInstance Win32_ComputerSystem
+          $build = "$($v.ProductName) $($v.DisplayVersion) $($v.CurrentBuild).$($v.UBR) ($($cs.Manufacturer) $($cs.Model))"
+          $cpu | Out-File -NoNewline -Encoding ascii out/cpu.txt
+          $build | Out-File -NoNewline -Encoding ascii out/build.txt
+          "CPU: $cpu"; "OS: $build"
+      - name: Build
+        shell: bash
+        run: clang -O2 -mxsave -o xstate_seq.exe native/xstate_seq.c -lwinmm
+      - name: Run
+        shell: bash
+        env:
+          PROGRAMS: ${{ inputs.programs }}
+          SECONDS_RUN: ${{ inputs.seconds }}
+          THREADS: ${{ inputs.threads }}
+        run: |
+          {
+            echo "## $(cat out/cpu.txt)"
+            echo "$(cat out/build.txt)"
+            echo '```'
+          } > out/summary.txt
+          for p in $PROGRAMS; do
+            for t in $THREADS; do
+              ./xstate_seq.exe "$p" "$SECONDS_RUN" "$t" >> out/summary.txt 2>&1
+              echo "    exit=$?" >> out/summary.txt
+            done
+          done
+          echo '```' >> out/summary.txt
+          cat out/summary.txt
+          cat out/summary.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: seq-${{ matrix.os }}-${{ matrix.slot }}
+          path: out
+          retention-days: 90
