@@ -111,6 +111,13 @@ StressSeed sweep 1-60 (8 s each, `Repro field`):
   `XSTATE_PROBE_*` switches, documented in the file).
 - `native/xstate_stale_header.c`, `.github/workflows/stale-header.yml`: the standalone reproducer above.
   The summary table the workflow prints was corrected after run 44070307231 and has not been run since.
+- `native/xstate_detect.c`, `.github/workflows/detect.yml`: experiments for detecting and avoiding the bug
+  from inside a program: a start-up self-test and its cost, the servicing feature query, where the kernel puts
+  the XSAVE header relative to the faulting `rsp`, and clearing the one quadword it misreads. Run
+  [44097531693](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44097531693): 12 of 12
+  Server 2025 VMs affected, two AVX2-only ones (EPYC 7763) among them; 2 of 2 Server 2022 VMs not; with the
+  quadword cleared, 0 of 4,000 short contexts on every affected VM.
+- `native/scrub_cost.c`: a C proxy for the cost of that store after a call (not a JVM benchmark).
 - `native/xstate_agent.c`, `native/xstate_agent.py`, `.github/workflows/agent.yml`: the in-JVM observer and its
   decoder.
 - `native/xstate_seq.c`, `.github/workflows/seq.yml`: a scripted probe of register writes, context switches
