@@ -49,6 +49,7 @@ jobs:
         run: |
           clang -O2 -mxsave -o xstate_stale_header.exe native/xstate_stale_header.c -ladvapi32
           clang -O2 -mxsave -o xstate_detect.exe native/xstate_detect.c -ladvapi32
+          clang -O2 -o scrub_cost.exe native/scrub_cost.c
       - name: Run
         shell: bash
         run: |
@@ -56,6 +57,8 @@ jobs:
           ./xstate_detect.exe > out/detect.txt 2>&1 && dstatus=0 || dstatus=$?
           echo "exit status: $dstatus" >> out/detect.txt
           cat out/detect.txt
+          { ./scrub_cost.exe 1920; ./scrub_cost.exe 320; } > out/scrub-cost.txt 2>&1 || true
+          cat out/scrub-cost.txt
           ./xstate_stale_header.exe > out/output.txt 2>&1 && status=0 || status=$?
           echo "exit status: $status" >> out/output.txt
           cat out/output.txt
