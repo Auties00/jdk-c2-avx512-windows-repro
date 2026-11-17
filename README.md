@@ -12,30 +12,61 @@ SAP see as rare wrong results in their Windows Server 2025 CI. This repository m
 
 ## Cause (2026-11-17): a stale XSAVE header on the user stack
 
-Read from the kernel of the affected image (`ntoskrnl.exe` 10.0.26100.33648, public symbols): when Windows
-Server 2025 copies the `CONTEXT` of a user-mode exception to the user stack, `RtlpCopyXStateChunk` first reads
-the XSAVE header that is already at the destination, which is whatever the thread left on its stack. If those
-16 bytes pass for a compacted header (second quadword with bit 63 set and no bit outside the enabled features,
-first quadword a subset of it), the kernel keeps that stale `XCOMP_BV` and stores only the components it
-names. `0x8000000000000000` (-0.0, `Long.MIN_VALUE`) names none, so the context has no AVX or AVX-512 state
-and continuing from it zeroes those registers. Windows Server 2022 clears the header before writing it.
-Microsoft's fix (`KiDispatchException` writes the header before the copy) is unconditional in Windows 11 24H2
-kernels since 26100.8036 (March 2026) and sits behind the feature flag
-`Feature_Servicing_ExceptionDispatchUninitializedUserXStateHeaderFix` in this Server 2025 kernel.
+When Windows Server 2025 (build 26100) copies the `CONTEXT` of a user-mode exception to the user stack,
+`RtlpCopyXStateChunk` first reads the XSAVE header that is already at the destination, which is whatever the
+thread left on its stack. If those 16 bytes pass for a compacted header (second quadword with bit 63 set and
+no bit outside the enabled features, first quadword a subset of it), the kernel keeps that stale `XCOMP_BV`
+and stores only the components it names. `0x8000000000000000` (-0.0, `Long.MIN_VALUE`) names none, so the
+context has no AVX or AVX-512 state and continuing from it zeroes those registers. This is read from
+`ntoskrnl.exe` 10.0.26100.33648 (public symbols). Windows Server 2022 clears the header before writing it.
 
-Evidence so far:
-- `native/xstate_agent.c` (a JVM agent that records the exception contexts, workflow `agent.yml`), run
-  [44058574714](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44058574714): on four
-  Server 2025 AVX-512 hosts, all 11 contexts that lack a component in use have `XSTATE_BV = 0` and
-  `XCOMP_BV = 0x8000000000000000`; the other 6,319 have `XCOMP_BV = 0x80000000000000E4`.
-- `native/xstate_stale_header.c` is the standalone reproducer derived from this: it fills the stack below
-  `rsp` with a pattern, loads the vector registers, takes an access violation and checks the context and the
-  registers. **It has not yet run on a Server 2025 host.** Its first CI run
-  ([44058127674](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44058127674)) failed to
-  link on every runner; the rerun
-  ([44070307231](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44070307231), workflow
-  `stale-header.yml`) holds the result. On Windows 11 23H2 it reports no bug, as expected for an unaffected
-  kernel.
+`native/xstate_stale_header.c` reproduces it without a JVM, on one thread: it fills the 32 KiB below `rsp`
+with a 64-bit pattern, loads the vector registers, reads a `PAGE_NOACCESS` page, records the context in a
+vectored handler, continues, and compares the registers; 1,000 faults per pattern.
+
+```
+clang -O2 -mxsave -o xstate_stale_header.exe native/xstate_stale_header.c -ladvapi32
+xstate_stale_header.exe
+```
+
+Exit status 1 means a context lacked a component in use. Run
+[44070307231](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44070307231) (workflow
+`stale-header.yml`, results taken from each job's `output.txt` artifact):
+
+| job | OS build | CPU | XCR0 | controls (3 patterns): short contexts | `0x8000000000000000`: short, registers changed, mask, `XCOMP_BV` | `0x8000000000000004`: short, registers changed, mask, `XCOMP_BV` | exit |
+|---|---|---|---|---|---|---|---|
+| windows-2022-1 | 10.0.20348.5870 | AMD EPYC 9V74 80-Core Processor | 0xe7 | 0 of 3000 | 0 of 1000, 0 of 1000, 0xe7, `0x80000000000000e4` | 0 of 1000, 0 of 1000, 0xe7, `0x80000000000000e4` | 0 |
+| windows-2022-2 | 10.0.20348.5870 | AMD EPYC 9V74 80-Core Processor | 0xe7 | 0 of 3000 | 0 of 1000, 0 of 1000, 0xe7, `0x80000000000000e4` | 0 of 1000, 0 of 1000, 0xe7, `0x80000000000000e4` | 0 |
+| windows-2022-3 | 10.0.20348.5870 | AMD EPYC 7763 64-Core Processor | 0x7 | 0 of 3000 | 0 of 1000, 0 of 1000, 0x7, `0x8000000000000004` | 0 of 1000, 0 of 1000, 0x7, `0x8000000000000004` | 0 |
+| windows-latest-1 | 10.0.26100.33674 | INTEL(R) XEON(R) PLATINUM 8573C | 0xe7 | 0 of 3000 | 1000 of 1000, 1000 of 1000, 0x3, `0x8000000000000000` | 1000 of 1000, 1000 of 1000, 0x7, `0x8000000000000004` | 1 |
+| windows-latest-2 | 10.0.26100.33674 | INTEL(R) XEON(R) PLATINUM 8573C | 0x600e7 | 0 of 3000 | 1000 of 1000, 1000 of 1000, 0x3, `0x8000000000000000` | 1000 of 1000, 1000 of 1000, 0x7, `0x8000000000000004` | 1 |
+| windows-latest-3 | 10.0.26100.33674 | INTEL(R) XEON(R) PLATINUM 8573C | 0xe7 | 0 of 3000 | 1000 of 1000, 1000 of 1000, 0x3, `0x8000000000000000` | 1000 of 1000, 1000 of 1000, 0x7, `0x8000000000000004` | 1 |
+| windows-latest-4 | 10.0.26100.33674 | AMD EPYC 9V74 80-Core Processor | 0xe7 | 0 of 3000 | 1000 of 1000, 1000 of 1000, 0x3, `0x8000000000000000` | 1000 of 1000, 1000 of 1000, 0x7, `0x8000000000000004` | 1 |
+| windows-latest-5 | 10.0.26100.33674 | INTEL(R) XEON(R) PLATINUM 8573C | 0xe7 | 0 of 3000 | 1000 of 1000, 1000 of 1000, 0x3, `0x8000000000000000` | 1000 of 1000, 1000 of 1000, 0x7, `0x8000000000000004` | 1 |
+| windows-latest-6 | 10.0.26100.33674 | INTEL(R) XEON(R) PLATINUM 8573C | 0xe7 | 0 of 3000 | 1000 of 1000, 1000 of 1000, 0x3, `0x8000000000000000` | 1000 of 1000, 1000 of 1000, 0x7, `0x8000000000000004` | 1 |
+| windows-latest-7 | 10.0.26100.33674 | INTEL(R) XEON(R) PLATINUM 8573C | 0xe7 | 0 of 3000 | 1000 of 1000, 1000 of 1000, 0x3, `0x8000000000000000` | 1000 of 1000, 1000 of 1000, 0x7, `0x8000000000000004` | 1 |
+| windows-latest-8 | 10.0.26100.33674 | INTEL(R) XEON(R) PLATINUM 8573C | 0xe7 | 0 of 3000 | 1000 of 1000, 1000 of 1000, 0x3, `0x8000000000000000` | 1000 of 1000, 1000 of 1000, 0x7, `0x8000000000000004` | 1 |
+
+- Windows Server 2025, 8 VMs: 16,000 of 16,000 faults over the two header-like patterns give a context
+  without components in use, and the registers differ after resuming in every one (ymm upper halves, zmm0-15
+  upper halves, zmm16-31, k1-k7; with `0x8000000000000004` AVX survives and the AVX-512 components do not).
+  The context's `XCOMP_BV` is the value the stack was filled with. Controls: 0 of 24,000.
+- Windows Server 2022, 3 VMs: 0 of 15,000. Windows 11 23H2 (22631.6199, local): 0 of 5,000.
+- Not covered by this run: an AVX2-only CPU on Server 2025, AMD EPYC 9V45, Intel Xeon 8370C.
+- An earlier run (44058127674) failed to link on every runner and carries no result.
+
+The JVM connection: `native/xstate_agent.c` (a JVM agent that records the exception contexts, workflow
+`agent.yml`), run
+[44058574714](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44058574714): on four
+Server 2025 AVX-512 hosts, all 11 contexts that lack a component in use have `XSTATE_BV = 0` and
+`XCOMP_BV = 0x8000000000000000`; the other 6,319 have `XCOMP_BV = 0x80000000000000E4`. Which JVM frame leaves
+that value on the stack was not determined.
+
+Microsoft's fix, as read from the kernels (none of the client builds was run): `KiDispatchException` writes
+the header before the copy. Windows 11 24H2 kernels have it unconditionally from 26100.8036 (March 2026); in
+this Server 2025 kernel it sits behind the feature flag
+`Feature_Servicing_ExceptionDispatchUninitializedUserXStateHeaderFix`, and the reproducer shows it is not
+active on the runners.
 
 ## What it shows
 
@@ -57,7 +88,8 @@ From the runs linked below (each Windows job lands on a random runner CPU):
 - `native/xstate_probe.c`, the same trap without a JVM (zmm0-31 and k1-k7 loaded, a no-access page, a
   vectored handler or a function-table language handler like HotSpot's, the handler clobbering the volatile
   vector state, yielding, resuming elsewhere), never sees corruption on the same runners. So Windows does
-  not lose the upper bank on every trap; the JVM case needs a condition the probe does not recreate.
+  not lose the upper bank on every trap. The condition is the content of the stack below the stack pointer;
+  see the section above.
 
 StressSeed sweep 1-60 (8 s each, `Repro field`):
 
@@ -78,6 +110,7 @@ StressSeed sweep 1-60 (8 s each, `Repro field`):
 - `native/xstate_probe.c`: the JVM-free probe described above (`fault`, `seh`, `nofault` modes and
   `XSTATE_PROBE_*` switches, documented in the file).
 - `native/xstate_stale_header.c`, `.github/workflows/stale-header.yml`: the standalone reproducer above.
+  The summary table the workflow prints was corrected after run 44070307231 and has not been run since.
 - `native/xstate_agent.c`, `native/xstate_agent.py`, `.github/workflows/agent.yml`: the in-JVM observer and its
   decoder.
 - `native/xstate_seq.c`, `.github/workflows/seq.yml`: a scripted probe of register writes, context switches
