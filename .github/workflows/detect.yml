@@ -1,0 +1,96 @@
+name: detect
+
+# Runs native/xstate_detect.c (start-up self-test and its cost, the servicing feature query, the geometry of the
+# exception context on the user stack, and scrubbing of the two quadwords the kernel reads) and, next to it,
+# native/xstate_stale_header.c. Many windows-latest jobs, to draw AVX2-only CPUs as well.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    name: ${{ matrix.os }} (${{ matrix.slot }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-2022]
+        slot: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        exclude:
+          - os: windows-2022
+            slot: 3
+          - os: windows-2022
+            slot: 4
+          - os: windows-2022
+            slot: 5
+          - os: windows-2022
+            slot: 6
+          - os: windows-2022
+            slot: 7
+          - os: windows-2022
+            slot: 8
+          - os: windows-2022
+            slot: 9
+          - os: windows-2022
+            slot: 10
+          - os: windows-2022
+            slot: 11
+          - os: windows-2022
+            slot: 12
+          - os: windows-2022
+            slot: 13
+          - os: windows-2022
+            slot: 14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        shell: bash
+        run: |
+          clang -O2 -mxsave -o xstate_stale_header.exe native/xstate_stale_header.c -ladvapi32
+          clang -O2 -mxsave -o xstate_detect.exe native/xstate_detect.c -ladvapi32
+      - name: Run
+        shell: bash
+        run: |
+          mkdir -p out
+          ./xstate_detect.exe > out/detect.txt 2>&1 && dstatus=0 || dstatus=$?
+          echo "exit status: $dstatus" >> out/detect.txt
+          cat out/detect.txt
+          ./xstate_stale_header.exe > out/output.txt 2>&1 && status=0 || status=$?
+          echo "exit status: $status" >> out/output.txt
+          cat out/output.txt
+          cpu="$(grep '^cpu:' out/output.txt | cut -c6- | sed 's/ *$//')"
+          os="$(grep '^os:' out/output.txt | cut -c5-)"
+          xcr0="$(grep '^xcr0:' out/output.txt | sed 's/^xcr0: \([^,]*\),.*/\1/')"
+          bad="$(grep -A3 '^stack filled with 0x8000000000000000 ' out/output.txt | grep 'contexts without' | head -1 | sed 's/.*in use: \([0-9]* of [0-9]*\);.*resuming: \([0-9]* of [0-9]*\).*/\1 short, \2 corrupted/')"
+          controls="$(grep -c '=> ok' out/output.txt || true)"
+          case "$status" in 0) verdict="not affected";; 1) verdict="BUG REPRODUCED";; 2) verdict="no AVX";; *) verdict="exit $status";; esac
+          printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${{ matrix.os }}" "$os" "$cpu" "$xcr0" "$bad" "$verdict" > out/row.tsv
+          {
+            echo "### ${{ matrix.os }} (${{ matrix.slot }}): $verdict"
+            echo '```'
+            cat out/output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: detect-${{ matrix.os }}-${{ matrix.slot }}
+          path: out
+          retention-days: 90
+
+  report:
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Table
+        run: |
+          {
+            echo '| runner | OS build | CPU | XCR0 | contexts filled over 0x8000000000000000 | verdict |'
+            echo '|---|---|---|---|---|---|'
+            cat art/*/row.tsv | sort | awk -F'\t' '{print "| "$1" | "$2" | "$3" | "$4" | "$5" | "$6" |"}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
