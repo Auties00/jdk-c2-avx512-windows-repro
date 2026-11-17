@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         shell: bash
-        run: clang -O2 -mxsave -o xstate_stale_header.exe native/xstate_stale_header.c
+        run: clang -O2 -mxsave -o xstate_stale_header.exe native/xstate_stale_header.c -ladvapi32
       - name: Run
         shell: bash
         run: |

@@ -21,7 +21,7 @@
  * Exit status: 1 when a context lacked a component in use or a register changed (bug present), 0 when every
  * context was complete, 2 when the CPU or the OS does not provide AVX.
  *
- * Build: clang -O2 -mxsave -o xstate_stale_header.exe xstate_stale_header.c    (also builds with clang-cl / MinGW)
+ * Build: clang -O2 -mxsave -o xstate_stale_header.exe xstate_stale_header.c -ladvapi32
  *
  * MIT License.
  */
