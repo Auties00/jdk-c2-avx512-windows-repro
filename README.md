@@ -10,6 +10,33 @@ Probably the same defect as [JDK-8365196](https://bugs.openjdk.org/browse/JDK-83
 ("[Windows] EPYC 9J14 AVX vector corruption during polling-page safepoint handling", open), which Oracle and
 SAP see as rare wrong results in their Windows Server 2025 CI. This repository makes it deterministic.
 
+## Cause (2026-11-17): a stale XSAVE header on the user stack
+
+Read from the kernel of the affected image (`ntoskrnl.exe` 10.0.26100.33648, public symbols): when Windows
+Server 2025 copies the `CONTEXT` of a user-mode exception to the user stack, `RtlpCopyXStateChunk` first reads
+the XSAVE header that is already at the destination, which is whatever the thread left on its stack. If those
+16 bytes pass for a compacted header (second quadword with bit 63 set and no bit outside the enabled features,
+first quadword a subset of it), the kernel keeps that stale `XCOMP_BV` and stores only the components it
+names. `0x8000000000000000` (-0.0, `Long.MIN_VALUE`) names none, so the context has no AVX or AVX-512 state
+and continuing from it zeroes those registers. Windows Server 2022 clears the header before writing it.
+Microsoft's fix (`KiDispatchException` writes the header before the copy) is unconditional in Windows 11 24H2
+kernels since 26100.8036 (March 2026) and sits behind the feature flag
+`Feature_Servicing_ExceptionDispatchUninitializedUserXStateHeaderFix` in this Server 2025 kernel.
+
+Evidence so far:
+- `native/xstate_agent.c` (a JVM agent that records the exception contexts, workflow `agent.yml`), run
+  [44058574714](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44058574714): on four
+  Server 2025 AVX-512 hosts, all 11 contexts that lack a component in use have `XSTATE_BV = 0` and
+  `XCOMP_BV = 0x8000000000000000`; the other 6,319 have `XCOMP_BV = 0x80000000000000E4`.
+- `native/xstate_stale_header.c` is the standalone reproducer derived from this: it fills the stack below
+  `rsp` with a pattern, loads the vector registers, takes an access violation and checks the context and the
+  registers. **It has not yet run on a Server 2025 host.** Its first CI run
+  ([44058127674](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44058127674)) failed to
+  link on every runner; the rerun
+  ([44070307231](https://github.com/Auties00/jdk-c2-avx512-windows-repro/actions/runs/44070307231), workflow
+  `stale-header.yml`) holds the result. On Windows 11 23H2 it reports no bug, as expected for an unaffected
+  kernel.
+
 ## What it shows
 
 From the runs linked below (each Windows job lands on a random runner CPU):
@@ -50,6 +77,14 @@ StressSeed sweep 1-60 (8 s each, `Repro field`):
   poll, compared bit for bit with the same arithmetic done in memory. It has not failed anywhere yet.
 - `native/xstate_probe.c`: the JVM-free probe described above (`fault`, `seh`, `nofault` modes and
   `XSTATE_PROBE_*` switches, documented in the file).
+- `native/xstate_stale_header.c`, `.github/workflows/stale-header.yml`: the standalone reproducer above.
+- `native/xstate_agent.c`, `native/xstate_agent.py`, `.github/workflows/agent.yml`: the in-JVM observer and its
+  decoder.
+- `native/xstate_seq.c`, `.github/workflows/seq.yml`: a scripted probe of register writes, context switches
+  and traps, written before the cause was read from the kernel; it has not produced a result on an AVX-512
+  host.
+- `.github/scripts/pe_ids.py`, `.github/workflows/sysinfo.yml`: print the symbol-server identifiers of the
+  runner's kernel.
 - `.github/workflows/repro.yml`: runs all of the above on several Windows and Linux runners on Temurin 26,
   Temurin 27 and the latest jdk.java.net early-access build, uploads `hs_err` files, logs and a summary.
   Modes: `full`, `probe`, `diag` (GC choice, no forced safepoints, poll oop maps through
