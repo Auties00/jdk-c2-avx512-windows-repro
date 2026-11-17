@@ -1,0 +1,96 @@
+name: agent
+
+# Observes, from inside a stock JVM, the exception contexts Windows hands to the polling-page traps
+# (native/xstate_agent.c), and prints what separates the short contexts from the complete ones.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        default: '29 31677'
+      seconds:
+        default: '4'
+      java_flags:
+        description: Extra JVM flags
+        default: '-XX:-UseFPUForSpilling'
+
+jobs:
+  agent:
+    name: ${{ matrix.os }} (${{ matrix.slot }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-2022]
+        slot: [1, 2, 3, 4, 5, 6, 7, 8]
+        exclude:
+          - os: windows-2022
+            slot: 3
+          - os: windows-2022
+            slot: 4
+          - os: windows-2022
+            slot: 5
+          - os: windows-2022
+            slot: 6
+          - os: windows-2022
+            slot: 7
+          - os: windows-2022
+            slot: 8
+    steps:
+      - uses: actions/checkout@v4
+      - id: jdk26
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+      - name: Host
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim()
+          $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+          $cs = Get-CimInstance Win32_ComputerSystem
+          $build = "$($v.ProductName) $($v.DisplayVersion) $($v.CurrentBuild).$($v.UBR) ($($cs.Manufacturer) $($cs.Model))"
+          $cpu | Out-File -NoNewline -Encoding ascii out/cpu.txt
+          $build | Out-File -NoNewline -Encoding ascii out/build.txt
+          "CPU: $cpu"; "OS: $build"
+      - name: Build
+        shell: bash
+        run: clang -O2 -mxsave -shared -o xstate_agent.dll native/xstate_agent.c
+      - name: Run
+        shell: bash
+        env:
+          SEEDS: ${{ inputs.seeds }}
+          SECONDS_RUN: ${{ inputs.seconds }}
+          JAVA_FLAGS: ${{ inputs.java_flags }}
+        run: |
+          cpu="$(cat out/cpu.txt)"; build="$(cat out/build.txt)"
+          agent="$(cygpath -m "$PWD/xstate_agent.dll")"
+          {
+            echo "## $cpu"
+            echo "$build"
+            echo '```'
+          } >> out/summary.txt
+          for seed in $SEEDS; do
+            for nested in 0 1; do
+              tag="seed${seed}_nested${nested}"
+              XA_NESTED=$nested XA_OUT="out/$tag.bin" XA_CFG=out/xstate_config.txt \
+                java "-agentpath:$agent" -Xmx512m -XX:+UnlockDiagnosticVMOptions -XX:+SafepointALot \
+                -XX:GuaranteedSafepointInterval=1 -XX:+StressGCM -XX:+StressLCM -XX:StressSeed=$seed \
+                -XX:-CreateCoredumpOnCrash $JAVA_FLAGS --add-modules jdk.incubator.vector \
+                Repro.java field "$SECONDS_RUN" 4 > "out/$tag.log" 2>&1
+              echo "exit=$? $(tail -1 "out/$tag.log" | cut -c1-120)" >> out/summary.txt
+              python native/xstate_agent.py "out/$tag.bin" "$tag" >> out/summary.txt 2>&1 || true
+            done
+          done
+          echo '```' >> out/summary.txt
+          cat out/xstate_config.txt >> out/summary.txt || true
+          cat out/summary.txt
+          cat out/summary.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-${{ matrix.os }}-${{ matrix.slot }}
+          path: out
+          retention-days: 90
