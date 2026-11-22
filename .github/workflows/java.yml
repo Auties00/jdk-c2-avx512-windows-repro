@@ -1,0 +1,81 @@
+name: java reproducer
+
+# Runs Repro.java on Temurin 27.0.1.0.2+1 (pinned: the StressSeed values select compiled code of this build) on
+# both Windows images. Each job lands on a random runner CPU; the reproducer has only failed on AVX-512 CPUs, so a
+# job on an AVX2-only CPU passes. A job fails when a run crashed or computed a wrong result.
+
+on:
+  workflow_dispatch:
+
+env:
+  JDK_URL: https://api.adoptium.net/v3/binary/version/jdk-27.0.1.0.2%2B1/windows/x64/jdk/hotspot/normal/eclipse
+
+jobs:
+  run:
+    name: ${{ matrix.image }} (${{ matrix.slot }})
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [windows-2022, windows-2025]
+        slot: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kernel
+        shell: bash
+        run: python .github/scripts/kernel_ids.py | tee kernel.txt
+      - name: JDK
+        shell: bash
+        run: |
+          curl -fsSL -o jdk.zip "$JDK_URL"
+          unzip -q jdk.zip -d jdk
+          echo "JAVA=$(dirname "$(find jdk -name java.exe -path '*/bin/*' | head -1)")/java" >> "$GITHUB_ENV"
+      - name: Run
+        shell: bash
+        run: |
+          mkdir -p classes logs
+          "${JAVA}c" --add-modules jdk.incubator.vector -d classes Repro.java 2>&1 | grep -v -i warning || true
+          cpu=$(powershell -NoProfile -Command "(Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim()")
+          avx=$("$JAVA" -XX:+PrintFlagsFinal -version 2>/dev/null | awk '$2 == "UseAVX" {print $4}')
+          echo "cpu: $cpu, UseAVX=$avx (3 means AVX-512)" | tee results.txt
+          failed=0
+          # run <seconds> <seed> <extra flags...>: one JVM, classified by its hs_err file and exit status
+          run() {
+            local seconds=$1 seed=$2; shift 2
+            local tag code=0 result
+            tag=$(echo "seed$seed$*" | tr -c 'A-Za-z0-9\n' '_')
+            rm -f hs_err_*.log
+            "$JAVA" -XX:+UnlockDiagnosticVMOptions -XX:+SafepointALot -XX:GuaranteedSafepointInterval=1 \
+              -XX:+StressGCM -XX:+StressLCM -XX:StressSeed="$seed" "$@" \
+              -XX:-CreateCoredumpOnCrash -XX:ErrorFile=hs_err_%p.log \
+              --add-modules jdk.incubator.vector -cp classes Repro "$seconds" 4 > "logs/$tag.log" 2>&1 || code=$?
+            if ls hs_err_*.log > /dev/null 2>&1; then
+              result="CRASH ($(grep -m1 '^siginfo' hs_err_*.log | sed 's/^siginfo: //'))"
+              mv "$(ls hs_err_*.log | head -1)" "logs/$tag.hs_err.log"
+            elif [ $code = 3 ]; then
+              result="WRONG RESULTS ($(grep -m1 '^calls' "logs/$tag.log"))"
+            elif [ $code = 0 ]; then
+              result="ok ($(grep -m1 '^calls' "logs/$tag.log"))"
+            else
+              result="exit $code"
+            fi
+            case $result in ok*) ;; *) failed=1 ;; esac
+            echo "seed $seed ${*:-(default flags)}: $result" | tee -a results.txt
+          }
+          for seed in 13 18 25 39 54; do run 10 "$seed"; done
+          for seed in 13 25; do run 30 "$seed" -XX:-UseFPUForSpilling; done
+          run 10 13 -XX:UseAVX=2 -XX:MaxVectorSize=16
+          {
+            echo "### ${{ matrix.image }} (${{ matrix.slot }})"
+            echo '```'
+            cat kernel.txt results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $failed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-${{ matrix.image }}-${{ matrix.slot }}
+          path: logs
+          retention-days: 90

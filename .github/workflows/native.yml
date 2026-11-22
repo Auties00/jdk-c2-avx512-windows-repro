@@ -1,0 +1,41 @@
+name: native reproducer
+
+# Builds and runs native/xstate_stale_header.c, the JVM-free reproducer, on both Windows images. Each job lands on
+# a random runner CPU. A job fails when the bug reproduces (the program exits with 1).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    name: ${{ matrix.image }} (${{ matrix.slot }})
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [windows-2022, windows-2025]
+        slot: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kernel
+        shell: bash
+        run: python .github/scripts/kernel_ids.py | tee kernel.txt
+      - name: Build
+        shell: bash
+        run: clang -O2 -mxsave -o xstate_stale_header.exe native/xstate_stale_header.c -ladvapi32 -lversion
+      - name: Run
+        shell: bash
+        run: |
+          status=0
+          ./xstate_stale_header.exe > output.txt || status=$?
+          cat output.txt
+          {
+            echo "### ${{ matrix.image }} (${{ matrix.slot }}): exit status $status"
+            echo '```'
+            cat kernel.txt
+            grep -E '^(cpu|xcr0|vector state|RESULT)' output.txt
+            grep -A4 '^stack filled with 0x8000000000000000' output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
