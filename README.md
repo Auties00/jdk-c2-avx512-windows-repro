@@ -1,6 +1,6 @@
 # JDK-8365196 reproducer: Windows loses AVX state when resuming from an exception
 
-Some Windows kernels of build 26100 build the context of a user-mode exception from a stale XSAVE header left on
+Windows kernels of build 26100 before the fix (Windows 11 24H2 and 25H2, Windows Server 2025) build the context of a user-mode exception from a stale XSAVE header left on
 the user stack. When that header names fewer components than the thread is using, resuming from the exception
 resets the rest: the upper halves of ymm0-15 and zmm0-31, xmm16-31 and k1-k7. HotSpot resumes from such
 exceptions at C2 safepoint polls and implicit null checks, so C2 code with vector state live there crashes or
@@ -19,39 +19,47 @@ Bug: [JDK-8365196](https://bugs.openjdk.org/browse/JDK-8365196).
 
 ## Which kernels are affected
 
-Revisions are `ntoskrnl.exe` file versions, which can be lower than the OS build (UBR) an update reports.
+Revisions are kernel (`ntoskrnl.exe`) file versions, which can be lower than the OS build (UBR) an update
+reports. Windows Server 2025 updates have been numbered on their own branch since January 2026 (from
+26100.32230), so compare revisions only within one branch.
 
 Affected:
-- Windows Server 2025, kernel 26100.33828 (the current `windows-2025` runner): gated (below), and the feature is
-  not enabled. The native reproducer fails on every runner VM tried.
 - Windows 11 24H2 and 25H2, kernels 26100.1 to 26100.6584.
+- Insider previews 26074 to 26376 (8 kernels).
 
 Gated (the fix is in the kernel, behind feature 58474193; affected while the feature is off):
 - Windows 11 24H2 and 25H2, kernels 26100.6725 to 26100.7824.
-- Windows Server 2025, kernel 26100.33828 (above).
+- Windows Server 2025, every kernel of its branch examined, 26100.32230 to 26100.33828 (33828 is the current
+  `windows-2025` runner). The feature is off on the runner, and the native reproducer fails on every runner VM
+  tried. No Server 2025 kernel with the unconditional fix exists yet.
 
 Fixed:
-- Windows 11 24H2 and 25H2, kernels 26100.7920 to 26100.9974 (first shipped in the update with OS build
-  26100.7922, KB5077241).
-- Windows 11 26H1, kernels 28000.1575 to 28000.3365.
+- Windows 11 24H2 and 25H2, kernels 26100.7920 to 26100.10068 (first shipped in the update with OS build
+  26100.7922, KB5077241). The 26200 and 26300 enablement builds run these same kernels.
+- Windows 11 26H1, every kernel examined, 28000.1 to 28000.3614.
 
 Not affected (these kernels clear the header before the copy):
-- Builds 17763, 18362, 19041, 22000 and 22621: Windows Server 2019, Windows 10 1809 to 22H2, Windows 11 21H2 to
-  23H2 (524 kernels).
-- Windows Server 2022, kernel 20348.5866 (the `windows-2022` runner). Reproducer passes.
-- An x64 process under emulation on Windows 11 on Arm64 (26200.9974). Measured.
+- Every released build line before 26100: Windows 10 1507 to 22H2 (10240 to 19045), Windows 11 21H2 to 23H2
+  (22000, 22621/22631), Windows Server 2016, 2019, 2022 and 23H2 (14393, 17763, 20348, 25398) and Azure Stack
+  HCI (17784, 20349, 25398), at every revision examined.
+- Windows Server 2022, kernel 20348.5866 (the `windows-2022` runner): measured, the reproducer passes.
+- An x64 process under emulation on Windows 11 on Arm64 (26200.9974): measured.
 
-Not examined, so nothing is claimed for them: any other build line (for example 10240, 14393, 25398), Windows
-Server 2025 kernels other than 26100.33828, the 26100 revisions between the ranges above (6585 to 6724, 7825 to
-7919) and after 9974, 28000 revisions outside the range above, Insider builds, and hotpatched kernels.
+Windows on Arm64 (native processes): the Arm64 kernels of 26100 have the same routine, with the same affected,
+gated and fixed revisions. A process using SVE is therefore exposed on an unfixed kernel; this is read from the
+code, not measured, because no available machine runs an unfixed Arm64 kernel. A probe on 26100.9974 (fixed)
+kept all SVE state over 2,560 faults.
 
-How this was established: the two kernel routines involved were read, with public symbols, in the 604 x64
-kernels of these builds that the Microsoft symbol server serves (13 of them checked by hand). Only the two runner
-kernels and the Arm64 case were also measured live.
+Not examined, so nothing is claimed for them: Windows 7, 8 and 8.1 (no public symbols), the Canary builds from
+29599 (the routine was rewritten; 23 of 38 kernels do not match a known shape), Insider builds before May 2026,
+28000.1896 (no public symbols), seven old kernels that can no longer be downloaded (10240.18244, 14393.3024,
+14393.5989, 14393.6252, 17763.4499, 18362.175, 22000.708; each sits among unaffected kernels with identical
+code), and hotpatches: 4 of 29 hotpatch images were decoded, and none replaces the routines involved.
 
-Since January 2026, Windows Server 2025 updates are numbered on their own branch (from 26100.32230):
-26100.33828 is gated although it is numerically above every fixed client revision. Compare revisions only within
-one branch.
+How this was established: the two kernel routines involved were classified, with public symbols, in 2,039 x64
+kernels (1,557 `ntoskrnl.exe`, 482 `ntkrla57.exe`) from the Microsoft symbol server, update packages and Windows
+container images; every distinct shape of the routine that clears or trusts the header was also read by hand. The
+runner kernels and the Arm64 cases were also measured live.
 
 ## Running the native reproducer
 
@@ -157,7 +165,8 @@ RESULT: every result was correct
 - Windows 11 24H2 or 25H2: install a cumulative update with kernel 26100.7920 or later (OS build 26100.7922,
   KB5077241, or later). A hotpatch update does not replace the kernel: the March 2026 hotpatches (OS builds
   26100.7979 to 7985) patch the gated January kernel in memory, and that combination was not examined.
-- Windows Server 2025: no fixed kernel has been examined. The current 26100.33828 is gated with the fix off.
+- Windows Server 2025: no kernel with the unconditional fix exists yet; every kernel through 26100.33828 is
+  gated, with the fix off on the machines measured.
 - JVM: `-XX:UseAVX=2 -XX:MaxVectorSize=16`. C2 then keeps vector values only in the low 128 bits of xmm0-15,
   which every context carries. Vector code gets slower.
 - `-XX:UseAVX=2` alone avoids this reproducer, but C2 can still keep 256-bit vectors live at a trap, and their
