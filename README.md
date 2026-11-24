@@ -163,8 +163,9 @@ RESULT: every result was correct
 ## Workarounds
 
 - Windows 11 24H2 or 25H2: install a cumulative update with kernel 26100.7920 or later (OS build 26100.7922,
-  KB5077241, or later). A hotpatch update does not replace the kernel: the March 2026 hotpatches (OS builds
-  26100.7979 to 7985) patch the gated January kernel in memory, and that combination was not examined.
+  KB5077241, or later). A hotpatch update does not replace the kernel and does not fix this: no kernel hotpatch
+  examined (34 images) touches the routines involved, so a hotpatched system behaves like its baseline kernel. The
+  March 2026 hotpatches (OS builds 26100.7979 to 7985) run on the gated January kernel 26100.7623.
 - Windows Server 2025: no kernel with the unconditional fix exists yet; every kernel through 26100.33828 is
   gated. An installed system ships the fix switched off by the feature override
   `HKLM\SYSTEM\CurrentControlSet\Control\FeatureManagement\Overrides\3\1150694031` (`EnabledState` = 1).
