@@ -190,8 +190,8 @@ if [ -s "$here/out/raw.txt" ]; then tr -d '\r' < "$here/out/raw.txt" > "$here/ou
 rm -f "$here/out/raw.txt"
 cat "$here/out/out.txt"
 if grep -q 'RESULT: the exception context dropped\|^RESULT LOSES' "$here/out/out.txt"; then result="loses state"
+elif grep -q '^RESULT: not applicable\|RESULT no-sve' "$here/out/out.txt"; then result="not applicable: the OS has not enabled the vector state in Windows PE"
 elif grep -q '^RESULT: \|^RESULT keeps' "$here/out/out.txt"; then result="keeps state"
-elif grep -q 'no AVX on this host\|RESULT no-sve' "$here/out/out.txt"; then result="not measurable: this kernel does not enable the extended state in Windows PE"
 elif [ "$status" = 124 ]; then result="no result: the guest did not finish within $LIMIT seconds"
 else result="no result"; fi
 finish "$result"

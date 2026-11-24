@@ -22,7 +22,7 @@
  * controls; the last two are header-like.
  *
  * Exit status: 1 when a context lacked a component in use or a register changed (bug present), 0 when every
- * context was complete, 2 when the CPU or the OS does not provide AVX.
+ * context was complete, 2 when the CPU has no AVX or the OS has not enabled its state (nothing can be lost).
  *
  * Build (clang, x64): clang -O2 -mxsave -o xstate_stale_header.exe xstate_stale_header.c -ladvapi32 -lversion
  *
@@ -170,11 +170,20 @@ static void trial_avx(const uint64_t *in, uint64_t *out, uint64_t pattern, uint6
           "xmm13", "xmm14", "xmm15");
 }
 
+/* XCR0, or 0 when the OS has not enabled XSAVE (CR4.OSXSAVE clear: XGETBV would fault). */
+__attribute__((target("xsave")))
+static uint64_t os_xcr0(void) {
+    int r[4];
+    __cpuid(r, 1);
+    return (r[2] & (1 << 27)) ? _xgetbv(0) : 0;
+}
+
+/* 0: the OS has not enabled the AVX state (or the CPU has no AVX), 1: AVX, 2: AVX-512. */
 static int avx_level(void) {
     int r[4];
     __cpuid(r, 1);
     if (!(r[2] & (1 << 27)) || !(r[2] & (1 << 28))) return 0;         /* OSXSAVE, AVX */
-    uint64_t xcr0 = _xgetbv(0);
+    uint64_t xcr0 = os_xcr0();
     if ((xcr0 & 6) != 6) return 0;
     __cpuid(r, 0);
     if (r[0] >= 7) {
@@ -227,7 +236,7 @@ static void print_host(void) {
     memcpy(&control, shared + 0x3ec, 4);                                   /* XState.ControlFlags: bit 1 = compaction */
     printf("cpu: %s\nos: Windows %lu.%lu.%lu.%lu\nkernel: ntoskrnl.exe file version %s, running build %u\n"
            "xcr0: %#llx, enabled XSTATE features: %#llx, compaction (XSAVEC): %s\n",
-           brand, major, minor, build, ubr, kernel, nt_build & 0xffff, (unsigned long long) _xgetbv(0),
+           brand, major, minor, build, ubr, kernel, nt_build & 0xffff, (unsigned long long) os_xcr0(),
            (unsigned long long) enabled, (control & 2) ? "yes" : "no");
 }
 
@@ -236,7 +245,10 @@ int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
     print_host();
     if (level == 0) {
-        printf("no AVX on this host\n");
+        int r[4];
+        __cpuid(r, 1);
+        printf("RESULT: not applicable, the OS has not enabled the AVX state (CPUID AVX %d, OSXSAVE %d, XCR0 %#llx)\n",
+               (r[2] >> 28) & 1, (r[2] >> 27) & 1, (unsigned long long) os_xcr0());
         return 2;
     }
     have_avx512 = level == 2;
