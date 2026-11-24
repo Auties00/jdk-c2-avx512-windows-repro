@@ -166,7 +166,10 @@ RESULT: every result was correct
   KB5077241, or later). A hotpatch update does not replace the kernel: the March 2026 hotpatches (OS builds
   26100.7979 to 7985) patch the gated January kernel in memory, and that combination was not examined.
 - Windows Server 2025: no kernel with the unconditional fix exists yet; every kernel through 26100.33828 is
-  gated, with the fix off on the machines measured.
+  gated. An installed system ships the fix switched off by the feature override
+  `HKLM\SYSTEM\CurrentControlSet\Control\FeatureManagement\Overrides\3\1150694031` (`EnabledState` = 1).
+  Setting `EnabledState` to 2, or deleting that key, turns the fix on at the next boot (measured on
+  26100.32230). This changes an unsupported internal setting; use it at your own risk.
 - JVM: `-XX:UseAVX=2 -XX:MaxVectorSize=16`. C2 then keeps vector values only in the low 128 bits of xmm0-15,
   which every context carries. Vector code gets slower.
 - `-XX:UseAVX=2` alone avoids this reproducer, but C2 can still keep 256-bit vectors live at a trap, and their
