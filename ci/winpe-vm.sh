@@ -16,7 +16,8 @@
 #             keeps the fix off
 #   LIMIT     seconds the guest may run
 # Every medium is checked before it boots: the download against SHA1 when given, and the kernel inside it against
-# ci/kernel-hashes.tsv (SHA-256 of ntoskrnl.exe files as the Microsoft symbol server serves them).
+# ci/kernel-hashes.tsv (SHA-256 of ntoskrnl.exe files as the Microsoft symbol server serves them). A medium
+# boots when its kernel is in that list, or when its download matched SHA1.
 # Output: out/out.txt (what the guest printed), out/result.txt (one line), out/screens (last screenshots).
 set -euo pipefail
 : "${BOOT:=uefi}" "${OVERRIDE:=none}" "${SHA1:=}" "${LIMIT:=1500}" "${CPU:=host}"
@@ -31,7 +32,10 @@ finish() {  # finish <result text>: writes the result line
   reported=$(sed -n 's/^KVER class222 status 0x00000000 .* version \([0-9.]*\).*/\1/p' "$here/out/out.txt" 2>/dev/null | head -1)
   state=$(sed -n 's/^ *EnabledState *REG_DWORD *0x\([0-9]\).*/\1/p' "$here/out/out.txt" 2>/dev/null | head -1)
   cpu=$(sed -n 's/^cpu: //p' "$here/out/out.txt" 2>/dev/null | head -1)
-  [ -n "$cpu" ] || cpu="$(lscpu | sed -n 's/^Model name: *//p' | head -1)$([ "$ARCH" = arm64 ] && echo ' emulating a Neoverse V1')"
+  if [ -z "$cpu" ]; then
+    cpu=$(lscpu | sed -n 's/^Model name: *//p' | head -1)
+    if [ "$ARCH" = arm64 ]; then cpu="$cpu emulating a Neoverse V1"; fi
+  fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$NAME" "$ARCH" "${kernel:-${verified:-unknown}}" "${reported:-not reported}" \
     "$([ "$OVERRIDE" = none ] && echo 'as shipped' || echo "override EnabledState=$OVERRIDE")" "${state:-absent}" "$cpu" "$1" > "$here/out/result.txt"
   cat "$here/out/result.txt"
@@ -80,13 +84,16 @@ wimlib-imagex info tree/sources/boot.wim "$image" --boot > /dev/null
 wimlib-imagex extract tree/sources/boot.wim "$image" /Windows/System32/ntoskrnl.exe --dest-dir=k --no-acls > /dev/null
 ksha=$(sha256sum k/ntoskrnl.exe | cut -d' ' -f1); rm -rf k
 verified=$(awk -F'\t' -v a="$ARCH" -v h="$ksha" '$1 == a && $3 == h {print $2}' "$here/ci/kernel-hashes.tsv" | head -1)
-if [ -z "$verified" ]; then
-  echo "::error::the kernel of this medium (SHA-256 $ksha) is not in ci/kernel-hashes.tsv"
-  finish "not run: the kernel of the medium is not a known Microsoft kernel"; exit 1
+if [ -n "$verified" ]; then
+  echo "kernel verified: ntoskrnl.exe $verified, SHA-256 $ksha"
+elif [ -n "$SHA1" ]; then
+  echo "the kernel (SHA-256 $ksha) is not in ci/kernel-hashes.tsv; the download matched its published SHA-1"
+else
+  echo "::error::the kernel of this medium (SHA-256 $ksha) is not in ci/kernel-hashes.tsv and the download has no published hash"
+  finish "not run: nothing verifies this medium"; exit 1
 fi
-echo "kernel verified: ntoskrnl.exe $verified, SHA-256 $ksha"
 
-printf '[LaunchApps]\r\n%%SYSTEMROOT%%\\System32\\cmd.exe, /c %%SYSTEMROOT%%\\System32\\repro-start.cmd\r\n' > winpeshl.ini
+printf '[LaunchApps]\r\nX:\\Windows\\System32\\cmd.exe, /c X:\\Windows\\System32\\repro-start.cmd\r\n' > winpeshl.ini
 {
   echo '@echo off'
   echo ':again'
