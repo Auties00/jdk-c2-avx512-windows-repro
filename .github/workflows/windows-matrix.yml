@@ -1,8 +1,8 @@
 name: windows matrix
 
-# Runs the native reproducers against the kernel of each Windows medium Microsoft hosts, by booting the medium's
-# Windows PE in QEMU on a GitHub-hosted Linux runner: x64 under KVM, Arm64 emulated (TCG, with SVE). The media are
-# downloaded from Microsoft inside each job and are never stored; only the text results are uploaded.
+# Runs the native reproducers against the kernel of each Windows medium listed in ci/windows-images.json, by
+# booting the medium's Windows PE in QEMU on a GitHub-hosted Linux runner: x64 under KVM, Arm64 emulated (with
+# SVE). Each medium is downloaded inside its job, verified, and never stored; only text results are uploaded.
 
 on:
   push:
@@ -10,12 +10,23 @@ on:
   workflow_dispatch:
 
 jobs:
-  probes:
-    name: build the probes
+  setup:
+    name: read the manifest, build the probes
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+      - name: Matrix
+        id: matrix
+        run: |
+          jq -c '[.images[] as $i | ($i.configurations // ["none"])[] as $c
+                  | {name: $i.name, arch: $i.arch, type: $i.type, url: $i.url, sha1: ($i.sha1 // ""),
+                     boot: ($i.boot // "uefi"), override: $c}]
+                 | to_entries | map(.value + {id: .key})' ci/windows-images.json > matrix.json
+          jq -r '.[] | "\(.id)\t\(.arch)\t\(.name)\t\(.override)"' matrix.json
+          echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
       - name: Toolchain (llvm-mingw, msvcrt)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,40 +50,14 @@ jobs:
           retention-days: 7
 
   vm:
-    name: ${{ matrix.arch }} ${{ matrix.label }}, override ${{ matrix.override }}
-    needs: probes
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 300
+    name: ${{ matrix.arch }}, ${{ matrix.name }}, ${{ matrix.override == 'none' && 'as shipped' || format('override {0}', matrix.override) }}
+    needs: setup
+    runs-on: ${{ matrix.arch == 'x64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {id: 1, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows 11 24H2 (26100.1742 media)', url: 'https://go.microsoft.com/fwlink/p/?LinkID=2289031&clcid=0x409&culture=en-us&country=US'}
-          - {id: 2, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows Server 2025 (26100.1742 media)', url: 'https://go.microsoft.com/fwlink/p/?LinkID=2293312&clcid=0x409&culture=en-us&country=US'}
-          - {id: 3, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows Server 2025 (26100.32230 media)', url: 'https://go.microsoft.com/fwlink/?linkid=2345730&clcid=0x409&culture=en-us&country=us'}
-          - {id: 4, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: '1', label: 'Windows Server 2025 (26100.32230 media)', url: 'https://go.microsoft.com/fwlink/?linkid=2345730&clcid=0x409&culture=en-us&country=us'}
-          - {id: 5, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: '2', label: 'Windows Server 2025 (26100.32230 media)', url: 'https://go.microsoft.com/fwlink/?linkid=2345730&clcid=0x409&culture=en-us&country=us'}
-          - {id: 6, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows 11 26H2 (26300.9457 media)', url: 'https://go.microsoft.com/fwlink/?linkid=2382600&clcid=0x409&culture=en-us&country=us'}
-          - {id: 7, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Azure Local 23H2 (25398 media)', url: 'https://aka.ms/HCIReleaseImage'}
-          - {id: 8, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: esd, override: 'none', label: 'Windows 11 23H2 (22631.2861 media)', url: 'http://dl.delivery.mp.microsoft.com/filestreamingservice/files/5c5cedfc-2821-4395-a497-c9c45ec24194/22631.2861.231204-0538.23H2_NI_RELEASE_SVC_REFRESH_CLIENTCONSUMER_RET_x64FRE_en-us.esd'}
-          - {id: 9, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: esd, override: 'none', label: 'Windows 11 22H2 (22621.1702 media)', url: 'http://dl.delivery.mp.microsoft.com/filestreamingservice/files/ec26d435-5d20-4563-9c75-b7726e55f93b/22621.1702.230505-1222.ni_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd'}
-          - {id: 10, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: esd, override: 'none', label: 'Windows 11 21H2 (22000.318 media)', url: 'http://dl.delivery.mp.microsoft.com/filestreamingservice/files/d96da0ce-dcf2-4e28-b704-2c16a4a71573/22000.318.211104-1236.co_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd'}
-          - {id: 11, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Azure Stack HCI 21H2 (20349 media)', url: 'https://aka.ms/2CNBagfhSZ8BM7jyEV8I'}
-          - {id: 12, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows Server 2022 (20348 media)', url: 'https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US'}
-          - {id: 13, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows 10 22H2 (19045.2006 media)', url: 'https://go.microsoft.com/fwlink/p/?LinkID=2208844&clcid=0x409&culture=en-us&country=US'}
-          - {id: 14, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: esd, override: 'none', label: 'Windows 10 1903 (18362.356 media)', url: 'http://dl.delivery.mp.microsoft.com/filestreamingservice/files/98e68b3e-e4d3-4769-8cd5-7ac465bb07f5/18362.356.190909-1636.19h1_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd'}
-          - {id: 15, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows Server 2019 (17763.3650 media)', url: 'https://go.microsoft.com/fwlink/p/?LinkID=2195167&clcid=0x409&culture=en-us&country=US'}
-          - {id: 16, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: esd, override: 'none', label: 'Windows 10 1803 (17134.112 media)', url: 'http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2018/07/17134.112.180619-1212.rs4_release_svc_refresh_clientconsumer_ret_x64fre_en-us_fdb17a968240f487e3a425f5005d9ae1b954ca99.esd'}
-          - {id: 17, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: esd, override: 'none', label: 'Windows 10 1709 (16299.125 media)', url: 'http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2017/12/16299.125.171213-1220.rs3_release_svc_refresh_clientconsumer_ret_x64fre_en-us_f310e471b8629577b472185adf1a7d4ad9f929f7.esd'}
-          - {id: 18, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows Server 2016 (14393 media)', url: 'https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US'}
-          - {id: 19, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows Server 2012 R2 (9600 media)', url: 'https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US'}
-          - {id: 20, arch: x64, runner: ubuntu-24.04, limit: 1500, kind: iso, override: 'none', label: 'Windows Server 2012 (9200 media)', url: 'https://download.microsoft.com/download/6/D/A/6DAB58BA-F939-451D-9101-7DE07DC09C03/9200.16384.WIN8_RTM.120725-1247_X64FRE_SERVER_EVAL_EN-US-HRM_SSS_X64FREE_EN-US_DV5.ISO'}
-          - {id: 21, arch: arm64, runner: ubuntu-24.04-arm, limit: 7200, kind: iso, override: 'none', label: 'Windows 11 24H2 (26100.1742 media)', url: 'https://go.microsoft.com/fwlink/?linkid=2269595&clcid=0x409&culture=en-us&country=us'}
-          - {id: 22, arch: arm64, runner: ubuntu-24.04-arm, limit: 7200, kind: esd, override: 'none', label: 'Windows 11 22H2 (22621.1702 media)', url: 'http://dl.delivery.mp.microsoft.com/filestreamingservice/files/f16733c5-e9f8-4613-9fe6-d331c8dd6e28/22621.1702.230505-1222.ni_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd'}
-          - {id: 23, arch: arm64, runner: ubuntu-24.04-arm, limit: 7200, kind: esd, override: 'none', label: 'Windows 11 21H2 (22000.318 media)', url: 'http://dl.delivery.mp.microsoft.com/filestreamingservice/files/78630d4b-9cdc-44ee-9c4a-fd14e8d72936/22000.318.211104-1236.co_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd'}
-          - {id: 24, arch: arm64, runner: ubuntu-24.04-arm, limit: 7200, kind: esd, override: 'none', label: 'Windows 10 1903 (18362.356 media)', url: 'http://dl.delivery.mp.microsoft.com/filestreamingservice/files/c6e9074f-9418-479d-a6c4-7b8f63340ee2/18362.356.190909-1636.19h1_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd'}
-          - {id: 25, arch: arm64, runner: ubuntu-24.04-arm, limit: 7200, kind: esd, override: 'none', label: 'Windows 10 1809 (17763.379 media)', url: 'http://dl.delivery.mp.microsoft.com/filestreamingservice/files/88ff4376-e60c-45fb-84cd-c28a7bd137a8/17763.379.190312-0539.rs5_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd'}
-          - {id: 26, arch: arm64, runner: ubuntu-24.04-arm, limit: 7200, kind: esd, override: 'none', label: 'Windows 10 1803 (17134.112 media)', url: 'http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2018/07/17134.112.180619-1212.rs4_release_svc_refresh_clientconsumer_ret_a64fre_en-us_2de6ac28afcc0f2985a994356f8d8549e91f9378.esd'}
+        include: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -92,13 +77,21 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq p7zip-full wimtools mtools dosfstools libhivex-bin libwin-hivex-perl \
-            ${{ matrix.arch == 'x64' && 'qemu-system-x86 ovmf' || 'qemu-system-arm qemu-efi-aarch64' }}
+          sudo apt-get install -y -qq wimtools mtools dosfstools genisoimage libhivex-bin libwin-hivex-perl \
+            ${{ matrix.arch == 'x64' && 'qemu-system-x86 ovmf' || 'qemu-system-arm qemu-efi-aarch64' }} > /dev/null
           sudo mkdir -p /mnt/work && sudo chown "$USER" /mnt/work
       - name: Run
         env:
           WORK: /mnt/work
-        run: .github/scripts/winpe-vm.sh ${{ matrix.arch }} ${{ matrix.kind }} '${{ matrix.url }}' '${{ matrix.label }}' ${{ matrix.override }} ${{ matrix.limit }}
+          NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+          TYPE: ${{ matrix.type }}
+          URL: ${{ matrix.url }}
+          SHA1: ${{ matrix.sha1 }}
+          BOOT: ${{ matrix.boot }}
+          OVERRIDE: ${{ matrix.override }}
+          LIMIT: ${{ matrix.arch == 'x64' && '1500' || '10800' }}
+        run: bash ci/winpe-vm.sh
       - name: Summary
         if: always()
         run: |
@@ -128,7 +121,7 @@ jobs:
       - name: Collect
         run: |
           printf 'version\tarch\tkernel file version\tclass-222 version\tconfiguration\tfeature state\tcpu\tresult\n' > summary.tsv
-          cat results/*/result.txt | sort -t "$(printf '\t')" -k2,2 -k3,3V >> summary.tsv || true
+          cat results/*/result.txt | sort -t "$(printf '\t')" -k2,2 -k3,3Vr -k5,5 >> summary.tsv || true
           {
             echo "Run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo '```'
