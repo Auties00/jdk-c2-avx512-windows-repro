@@ -15,7 +15,7 @@ work=${WORK:-$PWD/work}; mkdir -p "$work" out; here=$PWD
 cd "$work"
 
 echo "::group::download"
-curl -fL --retry 5 --retry-delay 10 -o media.bin "$url"
+curl -fsSL --retry 5 --retry-delay 10 -o media.bin "$url"
 ls -l media.bin
 echo "::endgroup::"
 
@@ -25,7 +25,7 @@ if [ "$kind" = iso ]; then
   7z x -y -ssc- -otree media.bin 'efi' 'boot/boot.sdi' 'sources/boot.wim' > /dev/null
   rm -f media.bin
   # some media spell these names in upper case
-  find tree -depth | while read -r f; do l="$(dirname "$f")/$(basename "$f" | tr A-Z a-z)"; [ "$f" = "$l" ] || mv "$f" "$l"; done
+  find tree -mindepth 1 -depth | while read -r f; do l="$(dirname "$f")/$(basename "$f" | tr A-Z a-z)"; [ "$f" = "$l" ] || mv "$f" "$l"; done
   image=$(wimlib-imagex info tree/sources/boot.wim | awk '/^Image Count:/ {print $3}')
 else
   wimlib-imagex extract media.bin 1 /efi /boot/boot.sdi --dest-dir=tree --no-acls > /dev/null
@@ -125,12 +125,35 @@ else
     -drive if=none,id=d0,format=raw,file=disk.img -device usb-storage,drive=d0,bootindex=0
 fi
 status=0
-timeout "$limit" "$@" -display none -serial file:serial.txt -nic none -no-reboot || status=$?
+start=$(date +%s)
+timeout "$limit" "$@" -display none -serial file:serial.txt -nic none -no-reboot -qmp unix:qmp.sock,server,nowait &
+pid=$!
+# a screenshot of the guest every 30 seconds, for diagnosis (the newest three are kept)
+mkdir -p "$here/out/screens"
+n=0
+while kill -0 $pid 2>/dev/null; do
+  sleep 30
+  n=$((n + 1))
+  python3 - "$here/out/screens/$(printf '%04d' $n).png" <<'PY' 2>/dev/null || true
+import json, socket, sys
+s = socket.socket(socket.AF_UNIX); s.settimeout(10); s.connect('qmp.sock'); f = s.makefile('rw')
+f.readline()
+for c in ({'execute': 'qmp_capabilities'}, {'execute': 'screendump', 'arguments': {'filename': sys.argv[1], 'format': 'png'}}):
+    f.write(json.dumps(c) + '
+'); f.flush()
+    while 'return' not in f.readline():
+        pass
+PY
+  ls "$here/out/screens" | head -n -3 | while read -r old; do rm -f "$here/out/screens/$old"; done
+done
+wait $pid || status=$?
+echo "guest ran $(( $(date +%s) - start )) seconds"
 echo "qemu exit status $status (124: timed out)"
 tail -c 2000 serial.txt 2>/dev/null | tr -d '\033' || true
 echo "::endgroup::"
 
-mcopy -n -i disk.img@@1M ::probe/out.txt "$here/out/out.txt" 2>/dev/null || echo "no output from the guest (qemu status $status)" > "$here/out/out.txt"
+mdir -i disk.img@@1M ::probe || true
+mcopy -n -i disk.img@@1M ::probe/out.txt "$here/out/out.txt" || echo "no output from the guest (qemu status $status)" > "$here/out/out.txt"
 rm -f disk.img
 cd "$here"
 tr -d '\r' < out/out.txt > out/o.txt && mv out/o.txt out/out.txt
