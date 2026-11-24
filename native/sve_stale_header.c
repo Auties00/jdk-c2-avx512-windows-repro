@@ -10,6 +10,19 @@
 #include <stdint.h>
 #include <malloc.h>
 
+// Resolved at run time: not every toolchain declares these for Arm64, and older kernels may lack them.
+static void* locate_xstate_feature(PCONTEXT c, DWORD feature, PDWORD length) {
+  typedef PVOID (WINAPI* fn_t)(PCONTEXT, DWORD, PDWORD);
+  fn_t fn = (fn_t)(void*)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LocateXStateFeature");
+  return fn != NULL ? fn(c, feature, length) : NULL;
+}
+
+static DWORD64 enabled_xstate_features(void) {
+  typedef DWORD64 (WINAPI* fn_t)(void);
+  fn_t fn = (fn_t)(void*)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetEnabledXStateFeatures");
+  return fn != NULL ? fn() : 0;
+}
+
 #ifndef PF_ARM_SVE_INSTRUCTIONS_AVAILABLE
 #define PF_ARM_SVE_INSTRUCTIONS_AVAILABLE 46
 #endif
@@ -79,7 +92,7 @@ static LONG CALLBACK veh(EXCEPTION_POINTERS* ep) {
       }
       for (f = 0; f < 64; f++) {
         DWORD len = 0;
-        void* q = LocateXStateFeature(c, f, &len);
+        void* q = locate_xstate_feature(c, f, &len);
         if (q != NULL) printf("  LocateXStateFeature(%d): sp-0x%llx length %lu\n", f, (unsigned long long)(seen_sp - (uintptr_t)q), (unsigned long)len);
       }
     }
@@ -117,7 +130,7 @@ int main(void) {
   typedef LONG (WINAPI* rtlgv)(OSVERSIONINFOEXW*);
   rtlgv f = (rtlgv)GetProcAddress(GetModuleHandleA("ntdll.dll"), "RtlGetVersion");
   const unsigned char* kusd = (const unsigned char*)0x7FFE0000;
-  DWORD64 enabled = GetEnabledXStateFeatures();
+  DWORD64 enabled = enabled_xstate_features();
   int sve = IsProcessorFeaturePresent(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE);
   int sve2 = IsProcessorFeaturePresent(PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE);
   uint32_t* end;
