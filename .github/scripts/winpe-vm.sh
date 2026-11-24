@@ -139,8 +139,7 @@ import json, socket, sys
 s = socket.socket(socket.AF_UNIX); s.settimeout(10); s.connect('qmp.sock'); f = s.makefile('rw')
 f.readline()
 for c in ({'execute': 'qmp_capabilities'}, {'execute': 'screendump', 'arguments': {'filename': sys.argv[1], 'format': 'png'}}):
-    f.write(json.dumps(c) + '
-'); f.flush()
+    f.write(json.dumps(c) + chr(10)); f.flush()
     while 'return' not in f.readline():
         pass
 PY
