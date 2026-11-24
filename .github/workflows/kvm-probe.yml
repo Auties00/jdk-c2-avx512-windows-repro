@@ -1,0 +1,84 @@
+name: kvm probe
+
+# Checks whether GitHub-hosted Linux runners can run Windows guests under KVM with the CPU state
+# the reproducers need: /dev/kvm, and in a KVM guest XSAVEC and AVX-512 (x64) or SVE (Arm64).
+
+on:
+  push:
+    branches: [ci-kvm-probe]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            qemu: qemu-system-x86
+            bin: qemu-system-x86_64
+            machine: q35
+            console: ttyS0
+          - runner: ubuntu-24.04-arm
+            qemu: qemu-system-arm
+            bin: qemu-system-aarch64
+            machine: virt,gic-version=max
+            console: ttyAMA0
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Host
+        run: |
+          uname -a
+          nproc; free -g; df -h / /mnt 2>/dev/null || df -h /
+          ls -l /dev/kvm || echo "no /dev/kvm"
+          grep -m1 -o -w -E 'xsavec|avx512f|avx512bw|sve|sve2' /proc/cpuinfo | sort -u || true
+          grep -m1 -E '^(model name|CPU implementer|CPU part)' /proc/cpuinfo || true
+          grep -m1 '^Features' /proc/cpuinfo || grep -m1 '^flags' /proc/cpuinfo
+
+      - name: Allow KVM for the runner user
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm || echo "no /dev/kvm"
+
+      - name: Install QEMU and busybox
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ${{ matrix.qemu }} busybox-static cpio
+          ${{ matrix.bin }} --version | head -1
+
+      - name: Build a minimal initramfs that prints the guest CPU flags
+        run: |
+          mkdir -p ir/bin ir/proc
+          cp /bin/busybox ir/bin/busybox
+          for c in sh cat grep mount poweroff sort tr echo; do ln -s busybox ir/bin/$c; done
+          cat > ir/init <<'INIT'
+          #!/bin/sh
+          mount -t proc proc /proc
+          echo "GUEST-FLAGS-BEGIN"
+          grep -m1 -E '^(flags|Features)' /proc/cpuinfo
+          echo "GUEST-FLAGS-END"
+          poweroff -f
+          INIT
+          chmod +x ir/init
+          (cd ir && find . | cpio -o -H newc --quiet | gzip > ../initrd.gz)
+          sudo cp /boot/vmlinuz-$(uname -r) vmlinuz
+          sudo chmod 644 vmlinuz
+          file vmlinuz
+
+      - name: Boot a KVM guest with -cpu host
+        run: |
+          set +e
+          timeout 120 ${{ matrix.bin }} -accel kvm -cpu host -machine ${{ matrix.machine }} -smp 2 -m 1024 \
+            -kernel vmlinuz -initrd initrd.gz -append "console=${{ matrix.console }} panic=-1 quiet" \
+            -nographic -no-reboot > guest.log 2>&1
+          echo "qemu exit $?"
+          tail -n 40 guest.log
+          sed -n '/GUEST-FLAGS-BEGIN/,/GUEST-FLAGS-END/p' guest.log > flags.txt
+          echo "--- guest feature check"
+          for f in xsavec xsaves avx2 avx512f avx512bw avx512vl sve sve2; do
+            if grep -qw "$f" flags.txt; then echo "guest has $f"; fi
+          done
+          test -s flags.txt
