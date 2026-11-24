@@ -23,7 +23,7 @@ jobs:
         run: |
           jq -c '[.images[] as $i | ($i.configurations // ["none"])[] as $c
                   | {name: $i.name, arch: $i.arch, type: $i.type, url: $i.url, sha1: ($i.sha1 // ""),
-                     boot: ($i.boot // "uefi"), override: $c}]
+                     boot: ($i.boot // "uefi"), cpu: ($i.cpu // "host"), override: $c}]
                  | to_entries | map(.value + {id: .key})' ci/windows-images.json > matrix.json
           jq -r '.[] | "\(.id)\t\(.arch)\t\(.name)\t\(.override)"' matrix.json
           echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
@@ -89,6 +89,7 @@ jobs:
           URL: ${{ matrix.url }}
           SHA1: ${{ matrix.sha1 }}
           BOOT: ${{ matrix.boot }}
+          CPU: ${{ matrix.cpu }}
           OVERRIDE: ${{ matrix.override }}
           LIMIT: ${{ matrix.arch == 'x64' && '1500' || '10800' }}
         run: bash ci/winpe-vm.sh

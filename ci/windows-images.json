@@ -2,6 +2,7 @@
   "comment": [
     "One entry per Windows medium the windows-matrix workflow boots. Adding a version is adding an entry.",
     "type: iso (a Windows ISO) or esd (an install ESD of the Media Creation Tool kind). boot: uefi unless stated.",
+    "cpu: the QEMU CPU model of an x64 guest; the runner CPU is passed through unless stated.",
     "sha1: the SHA-1 published for the download; empty for Microsoft evaluation links, which publish none.",
     "Every medium is also checked against ci/kernel-hashes.tsv before it boots.",
     "configurations: none (as shipped) or the EnabledState written to FeatureManagement override 3/1150694031."
@@ -207,7 +208,8 @@
       "type": "iso",
       "url": "https://download.microsoft.com/download/6/D/A/6DAB58BA-F939-451D-9101-7DE07DC09C03/9200.16384.WIN8_RTM.120725-1247_X64FRE_SERVER_EVAL_EN-US-HRM_SSS_X64FREE_EN-US_DV5.ISO",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "cpu": "Haswell-noTSX"
     },
     {
       "name": "Windows 7 SP1, 7601",
@@ -216,7 +218,8 @@
       "url": "https://archive.org/download/windows-7-sp1-updated-may-2011-en-msdn-aik/en_windows_7_enterprise_with_sp1_x64_dvd_u_677651.iso",
       "sha1": "a491f985dccfb5863f31b728dddbedb2ff4df8d1",
       "source": "mirror",
-      "boot": "bios"
+      "boot": "bios",
+      "cpu": "Haswell-noTSX"
     },
     {
       "name": "Windows 11 24H2, 26100.1742 (evaluation)",

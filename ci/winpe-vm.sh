@@ -10,6 +10,7 @@
 #   URL       where to download it
 #   SHA1      expected SHA-1 of the download, or empty when the publisher gives none
 #   BOOT      uefi (default) or bios (media older than Windows 8)
+#   CPU       the QEMU CPU model of an x64 guest; host (default) passes the runner's CPU through
 #   OVERRIDE  none, or 1 / 2: writes FeatureManagement\Overrides\3\1150694031 EnabledState (1 disabled,
 #             2 enabled) into the SYSTEM hive of the image; that entry is how an installed Windows Server 2025
 #             keeps the fix off
@@ -18,7 +19,8 @@
 # ci/kernel-hashes.tsv (SHA-256 of ntoskrnl.exe files as the Microsoft symbol server serves them).
 # Output: out/out.txt (what the guest printed), out/result.txt (one line), out/screens (last screenshots).
 set -euo pipefail
-: "${BOOT:=uefi}" "${OVERRIDE:=none}" "${SHA1:=}" "${LIMIT:=1500}"
+: "${BOOT:=uefi}" "${OVERRIDE:=none}" "${SHA1:=}" "${LIMIT:=1500}" "${CPU:=host}"
+export WIMLIB_IMAGEX_IGNORE_CASE=1
 work=${WORK:-$PWD/work}; here=$PWD
 mkdir -p "$work" out/screens
 cd "$work"
@@ -68,7 +70,7 @@ if [ "$TYPE" = iso ]; then
   chmod -R u+w tree
   image=$(wimlib-imagex info tree/sources/boot.wim | awk '/^Image Count:/ {print $3}')
 else
-  wimlib-imagex extract media.bin 1 /efi /boot/boot.sdi --dest-dir=tree --no-acls > /dev/null
+  wimlib-imagex extract media.bin 1 /efi /boot/boot.sdi --dest-dir=tree --no-acls --preserve-dir-structure > /dev/null
   wimlib-imagex export media.bin 3 tree/sources/boot.wim --compress=LZX > /dev/null
   rm -f media.bin
   image=1
@@ -144,11 +146,11 @@ echo "::endgroup::"
 
 echo "::group::guest"
 if [ "$ARCH" = x64 ] && [ "$BOOT" = bios ]; then
-  set -- qemu-system-x86_64 -accel kvm -cpu host -machine pc -smp 4 -m 6144 -vga std \
+  set -- qemu-system-x86_64 -accel kvm -cpu "$CPU" -machine pc -smp 4 -m 6144 -vga std \
     -drive file=boot.iso,media=cdrom,readonly=on,if=ide,index=2 -drive file=disk.img,format=raw,if=ide,index=0 -boot d
 elif [ "$ARCH" = x64 ]; then
   cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
-  set -- qemu-system-x86_64 -accel kvm -cpu host -machine q35 -smp 4 -m 6144 -vga std \
+  set -- qemu-system-x86_64 -accel kvm -cpu "$CPU" -machine q35 -smp 4 -m 6144 -vga std \
     -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=vars.fd \
     -drive if=none,id=d0,format=raw,file=disk.img -device ide-hd,drive=d0,bootindex=0
 else
@@ -164,7 +166,7 @@ timeout "$LIMIT" "$@" -display none -serial file:serial.txt -nic none -no-reboot
 pid=$!
 n=0
 while kill -0 $pid 2> /dev/null; do
-  sleep 20
+  sleep 8
   n=$((n + 1))
   python3 "$here/ci/screenshot.py" qmp.sock "$here/out/screens/$(printf '%04d' $n).png" 2> /dev/null || true
   ls "$here/out/screens" | head -n -4 | while read -r old; do rm -f "$here/out/screens/$old"; done
