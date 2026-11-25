@@ -141,10 +141,14 @@ qemu-img create -q -f qcow2 system.qcow2 48G
 
 if [ "$TYPE" = iso ]; then
   sudo umount iso
-  truncate -s 64M usb.img
-  mformat -i usb.img -F -v REPRO ::
-  mcopy -i usb.img -s data/autounattend.xml data/probe ::
-  results=usb.img
+  # a partitioned FAT32 volume large enough to be a valid one: the installed system must mount it too
+  truncate -s 600M usb.img
+  printf 'label: dos
+start=2048, type=c
+' | sfdisk -q usb.img
+  mformat -i usb.img@@1M -F -v REPRO ::
+  mcopy -i usb.img@@1M -s data/autounattend.xml data/probe ::
+  results=usb.img@@1M
 else
   # the Windows Setup image of the ESD on a bootable FAT disk; it starts Setup with the answer file and the ESD
   mkdir -p tree/sources

@@ -97,7 +97,7 @@ jobs:
           EDITION: ${{ matrix.edition }}
           LEGACY: ${{ matrix.legacy }}
           KEY: ${{ matrix.key }}
-          LIMIT: ${{ matrix.mode == 'install' && (matrix.arch == 'x64' && '9000' || '19800') || (matrix.arch == 'x64' && '1500' || '10800') }}
+          LIMIT: ${{ matrix.mode == 'install' && (matrix.arch == 'x64' && '6600' || '19800') || (matrix.arch == 'x64' && '1500' || '10800') }}
         run: bash ci/${{ matrix.mode == 'install' && 'install-vm.sh' || 'winpe-vm.sh' }}
       - name: Summary
         if: always()
