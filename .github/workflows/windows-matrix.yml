@@ -23,8 +23,8 @@ jobs:
         run: |
           jq -c '[.images[] as $i | ($i.configurations // ["none"])[] as $c
                   | {name: $i.name, arch: $i.arch, type: $i.type, url: $i.url, sha1: ($i.sha1 // ""),
-                     boot: ($i.boot // "uefi"), cpu: ($i.cpu // "host"), mode: ($i.mode // "winpe"),
-                     index: ($i.index // 1), key: ($i.key // ""), override: $c}]
+                     boot: ($i.boot // "uefi"), cpu: ($i.cpu // "host"), mode: ($i.mode // "install"),
+                     edition: ($i.edition // "."), key: ($i.key // ""), legacy: ($i.legacy // ""), override: $c}]
                  | to_entries | map(.value + {id: .key})' ci/windows-images.json > matrix.json
           jq -r '.[] | "\(.id)\t\(.arch)\t\(.mode)\t\(.name)\t\(.override)"' matrix.json
           echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
@@ -54,7 +54,7 @@ jobs:
     name: ${{ matrix.arch }}, ${{ matrix.name }}, ${{ matrix.mode == 'install' && 'installed' || (matrix.override == 'none' && 'as shipped' || format('override {0}', matrix.override)) }}
     needs: setup
     runs-on: ${{ matrix.arch == 'x64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
-    timeout-minutes: 240
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
@@ -92,9 +92,10 @@ jobs:
           BOOT: ${{ matrix.boot }}
           CPU: ${{ matrix.cpu }}
           OVERRIDE: ${{ matrix.override }}
-          INDEX: ${{ matrix.index }}
+          EDITION: ${{ matrix.edition }}
+          LEGACY: ${{ matrix.legacy }}
           KEY: ${{ matrix.key }}
-          LIMIT: ${{ matrix.mode == 'install' && '5400' || (matrix.arch == 'x64' && '1500' || '10800') }}
+          LIMIT: ${{ matrix.mode == 'install' && (matrix.arch == 'x64' && '5400' || '19800') || (matrix.arch == 'x64' && '1500' || '10800') }}
         run: bash ci/${{ matrix.mode == 'install' && 'install-vm.sh' || 'winpe-vm.sh' }}
       - name: Summary
         if: always()

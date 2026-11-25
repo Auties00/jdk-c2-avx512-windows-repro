@@ -37,7 +37,7 @@ finish() {  # finish <result text>: writes the result line
     if [ "$ARCH" = arm64 ]; then cpu="$cpu emulating a Neoverse V1"; fi
   fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$NAME" "$ARCH" "${kernel:-${verified:-unknown}}" "${reported:-not reported}" \
-    "$([ "$OVERRIDE" = none ] && echo 'as shipped' || echo "override EnabledState=$OVERRIDE")" "${state:-absent}" "$cpu" "$1" > "$here/out/result.txt"
+    "Windows PE, $([ "$OVERRIDE" = none ] && echo 'feature overrides absent' || echo "override EnabledState=$OVERRIDE")" "${state:-absent}" "$cpu" "$1" > "$here/out/result.txt"
   cat "$here/out/result.txt"
 }
 

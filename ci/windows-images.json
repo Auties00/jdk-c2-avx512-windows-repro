@@ -1,13 +1,15 @@
 {
   "comment": [
-    "One entry per Windows medium the windows-matrix workflow boots. Adding a version is adding an entry.",
-    "type: iso (a Windows ISO) or esd (an install ESD of the Media Creation Tool kind). boot: uefi unless stated.",
-    "cpu: the QEMU CPU model of an x64 guest; the runner CPU is passed through unless stated.",
+    "One entry per Windows medium the windows-matrix workflow measures. Adding a version is adding an entry.",
+    "type: iso (a Windows ISO) or esd (an install ESD of the Media Creation Tool kind).",
+    "mode: install (install the medium and measure the installed system, the default) or winpe (measure in the",
+    "  Windows PE of the medium: faster, but without the feature overrides an installed system has).",
     "sha1: the SHA-1 published for the download; empty for Microsoft evaluation links, which publish none.",
     "Every medium is also checked against ci/kernel-hashes.tsv before it boots.",
-    "configurations: none (as shipped) or the EnabledState written to FeatureManagement override 3/1150694031.",
-    "mode: winpe (boot the Windows PE of the medium, the default) or install (install image index, then measure).",
-    "key: a generic installation key from Microsoft documentation, for media that ask for one."
+    "edition: a regular expression for the image to install (first match); key: a generic installation key from",
+    "  Microsoft documentation, for media that ask for one. legacy: Windows 7 answer-file dialect.",
+    "cpu: the QEMU CPU model of an x64 guest; the runner CPU is passed through unless stated.",
+    "configurations: none (as shipped) or the EnabledState written to FeatureManagement override 3/1150694031."
   ],
   "images": [
     {
@@ -29,7 +31,9 @@
         "none",
         "1",
         "2"
-      ]
+      ],
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows 11 25H2, 26200.8246",
@@ -37,7 +41,9 @@
       "type": "esd",
       "url": "https://archive.org/download/Windows-11-version-25H2-26200.8246-Part_1-ESD-Files/ESD%20Files/26200.8246.260413-0654.25h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_en-us.esd",
       "sha1": "78a057a4a9a88e12192e0464fafbd68e40434e55",
-      "source": "mirror"
+      "source": "mirror",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows 11 26H2, 26300.9457 (evaluation)",
@@ -53,7 +59,9 @@
       "type": "iso",
       "url": "https://archive.org/download/Windows-11-version-26H1-28000.3231-Part_1-ISO-Files/Files/en-us_windows_11_business_editions_version_26h1_updated_oct_2026_x64_dvd_921ccd7c.iso",
       "sha1": "6ce01b0f6687c193c7e4b4b1bbb3ce81fc5ebc4e",
-      "source": "mirror"
+      "source": "mirror",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows Server 2025, 26100.1742 (evaluation)",
@@ -61,7 +69,8 @@
       "type": "iso",
       "url": "https://go.microsoft.com/fwlink/p/?LinkID=2293312&clcid=0x409&culture=en-us&country=US",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "standard.*(desktop|gui)"
     },
     {
       "name": "Windows Server 2025, 26100.32230 (evaluation)",
@@ -74,7 +83,8 @@
         "none",
         "1",
         "2"
-      ]
+      ],
+      "edition": "standard.*(desktop|gui)"
     },
     {
       "name": "Azure Local 23H2, 25398",
@@ -90,7 +100,9 @@
       "type": "esd",
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/5c5cedfc-2821-4395-a497-c9c45ec24194/22631.2861.231204-0538.23H2_NI_RELEASE_SVC_REFRESH_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
       "sha1": "8d8b38a9f97b71446301f3a6170078aa445f4958",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows 11 22H2, 22621.1702",
@@ -98,7 +110,9 @@
       "type": "esd",
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/ec26d435-5d20-4563-9c75-b7726e55f93b/22621.1702.230505-1222.ni_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
       "sha1": "4232d743be089cc3141164ef79b66549795d3dbf",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows 11 21H2, 22000.318",
@@ -106,7 +120,9 @@
       "type": "esd",
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/d96da0ce-dcf2-4e28-b704-2c16a4a71573/22000.318.211104-1236.co_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
       "sha1": "fee9cfc5798f68b9a810b4c441690bf223beaf1e",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Azure Stack HCI 21H2, 20349",
@@ -122,7 +138,8 @@
       "type": "iso",
       "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "standard.*(desktop|gui)"
     },
     {
       "name": "Windows 10 22H2, 19045.2006 (evaluation)",
@@ -138,7 +155,9 @@
       "type": "esd",
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/98e68b3e-e4d3-4769-8cd5-7ac465bb07f5/18362.356.190909-1636.19h1_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
       "sha1": "be0e7e220234af13911a3dee426b80bb28caa19d",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows Server 2019, 17763.3650 (evaluation)",
@@ -146,7 +165,8 @@
       "type": "iso",
       "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195167&clcid=0x409&culture=en-us&country=US",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "standard.*(desktop|gui)"
     },
     {
       "name": "Windows 10 1803, 17134.112",
@@ -154,7 +174,9 @@
       "type": "esd",
       "url": "http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2018/07/17134.112.180619-1212.rs4_release_svc_refresh_clientconsumer_ret_x64fre_en-us_fdb17a968240f487e3a425f5005d9ae1b954ca99.esd",
       "sha1": "fdb17a968240f487e3a425f5005d9ae1b954ca99",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows 10 1709, 16299.125",
@@ -162,7 +184,9 @@
       "type": "esd",
       "url": "http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2017/12/16299.125.171213-1220.rs3_release_svc_refresh_clientconsumer_ret_x64fre_en-us_f310e471b8629577b472185adf1a7d4ad9f929f7.esd",
       "sha1": "f310e471b8629577b472185adf1a7d4ad9f929f7",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows 10 1703, 15063",
@@ -170,7 +194,9 @@
       "type": "iso",
       "url": "https://archive.org/download/Win10_1703_English_x64/Win10_1703_English_x64.iso",
       "sha1": "ce8005a659e8df7fe9b080352cb1c313c3e9adce",
-      "source": "mirror"
+      "source": "mirror",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
     },
     {
       "name": "Windows Server 2016, 14393 (evaluation)",
@@ -178,7 +204,9 @@
       "type": "iso",
       "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "standard.*(desktop|gui)",
+      "cpu": "Skylake-Server-v4"
     },
     {
       "name": "Windows 10 1511, 10586",
@@ -186,7 +214,10 @@
       "type": "iso",
       "url": "https://archive.org/download/Win10_1511_English_x64/Win10_1511_English_x64.iso",
       "sha1": "875ec108288b9f581e5d8099cf0edb79f0f3e483",
-      "source": "mirror"
+      "source": "mirror",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX",
+      "cpu": "Skylake-Server-v4"
     },
     {
       "name": "Windows 10 1507, 10240 (LTSB 2015)",
@@ -194,7 +225,9 @@
       "type": "iso",
       "url": "https://archive.org/download/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446.iso",
       "sha1": "264d48c902e6b586a1ed965062f7da4d4da99b35",
-      "source": "mirror"
+      "source": "mirror",
+      "key": "WNMTR-4C88C-JK8YV-HQ7T2-76DF9",
+      "cpu": "Skylake-Server-v4"
     },
     {
       "name": "Windows Server 2012 R2, 9600 (evaluation)",
@@ -202,15 +235,29 @@
       "type": "iso",
       "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "standard.*(desktop|gui)",
+      "cpu": "Skylake-Server-v4"
     },
     {
-      "name": "Windows 11 24H2, 26100.1742 (evaluation)",
-      "arch": "arm64",
+      "name": "Windows Server 2012, 9200 (evaluation)",
+      "arch": "x64",
       "type": "iso",
-      "url": "https://go.microsoft.com/fwlink/?linkid=2269595&clcid=0x409&culture=en-us&country=us",
+      "url": "https://download.microsoft.com/download/6/D/A/6DAB58BA-F939-451D-9101-7DE07DC09C03/9200.16384.WIN8_RTM.120725-1247_X64FRE_SERVER_EVAL_EN-US-HRM_SSS_X64FREE_EN-US_DV5.ISO",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "edition": "standard.*(desktop|gui)",
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows 7 SP1, 7601",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/windows-7-sp1-updated-may-2011-en-msdn-aik/en_windows_7_enterprise_with_sp1_x64_dvd_u_677651.iso",
+      "sha1": "a491f985dccfb5863f31b728dddbedb2ff4df8d1",
+      "source": "mirror",
+      "legacy": "yes",
+      "cpu": "Skylake-Server-v4"
     },
     {
       "name": "Windows 11 25H2, 26200.7171",
@@ -219,6 +266,26 @@
       "url": "https://archive.org/download/Windows-11-version-25H2-26200.7171-Part_1-ESD-Files/ESD%20Files/26200.7171.251109-0334.25h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
       "sha1": "080edc838239129f12f20d1663358b518e8e7c8a",
       "source": "mirror",
+      "edition": "^windows 1[01] pro$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
+    },
+    {
+      "name": "Windows 11 24H2, 26100.1742 (evaluation)",
+      "arch": "arm64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/?linkid=2269595&clcid=0x409&culture=en-us&country=us",
+      "sha1": "",
+      "source": "Microsoft",
+      "mode": "winpe"
+    },
+    {
+      "name": "Windows 11 25H2, 26200.7171",
+      "arch": "arm64",
+      "type": "esd",
+      "url": "https://archive.org/download/Windows-11-version-25H2-26200.7171-Part_1-ESD-Files/ESD%20Files/26200.7171.251109-0334.25h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
+      "sha1": "080edc838239129f12f20d1663358b518e8e7c8a",
+      "source": "mirror",
+      "mode": "winpe",
       "configurations": [
         "none",
         "1",
@@ -231,7 +298,8 @@
       "type": "esd",
       "url": "https://archive.org/download/Windows-11-version-25H2-26200.8246-Part_1-ESD-Files/ESD%20Files/26200.8246.260413-0654.25h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_A64FRE_en-us.esd",
       "sha1": "c3479c701dd2193939017242a67b7b1a2c74fb5b",
-      "source": "mirror"
+      "source": "mirror",
+      "mode": "winpe"
     },
     {
       "name": "Windows 11 26H1, 28000.3231",
@@ -239,7 +307,8 @@
       "type": "iso",
       "url": "https://archive.org/download/Windows-11-version-26H1-28000.3231-Part_1-ISO-Files/Files/en-us_windows_11_business_editions_version_26h1_updated_oct_2026_arm64_dvd_921ccd7c.iso",
       "sha1": "f83330d38c756b15b3f1f8774431ab24df4f830d",
-      "source": "mirror"
+      "source": "mirror",
+      "mode": "winpe"
     },
     {
       "name": "Windows 11 22H2, 22621.1702",
@@ -247,7 +316,8 @@
       "type": "esd",
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/f16733c5-e9f8-4613-9fe6-d331c8dd6e28/22621.1702.230505-1222.ni_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
       "sha1": "5d429a7fb2cd9d3dad4636a2b09d3c8d587f69dd",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "mode": "winpe"
     },
     {
       "name": "Windows 11 21H2, 22000.318",
@@ -255,7 +325,8 @@
       "type": "esd",
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/78630d4b-9cdc-44ee-9c4a-fd14e8d72936/22000.318.211104-1236.co_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
       "sha1": "1d3f5c4d02153c28166cbd0ea38de03e5ab70845",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "mode": "winpe"
     },
     {
       "name": "Windows 10 1903, 18362.356",
@@ -263,7 +334,8 @@
       "type": "esd",
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/c6e9074f-9418-479d-a6c4-7b8f63340ee2/18362.356.190909-1636.19h1_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
       "sha1": "76999ef898c6b849bcc3da0b8a4664d2f291aedf",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "mode": "winpe"
     },
     {
       "name": "Windows 10 1809, 17763.379",
@@ -271,7 +343,8 @@
       "type": "esd",
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/88ff4376-e60c-45fb-84cd-c28a7bd137a8/17763.379.190312-0539.rs5_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
       "sha1": "48d8415d36fbcb8bcc42b766653720c3230a534d",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "mode": "winpe"
     },
     {
       "name": "Windows 10 1803, 17134.112",
@@ -279,146 +352,8 @@
       "type": "esd",
       "url": "http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2018/07/17134.112.180619-1212.rs4_release_svc_refresh_clientconsumer_ret_a64fre_en-us_2de6ac28afcc0f2985a994356f8d8549e91f9378.esd",
       "sha1": "2de6ac28afcc0f2985a994356f8d8549e91f9378",
-      "source": "Microsoft"
-    },
-    {
-      "name": "Windows Server 2016, 14393 (evaluation)",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US",
-      "sha1": "",
       "source": "Microsoft",
-      "mode": "install",
-      "index": 1,
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows 10 1511, 10586",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/Win10_1511_English_x64/Win10_1511_English_x64.iso",
-      "sha1": "875ec108288b9f581e5d8099cf0edb79f0f3e483",
-      "source": "mirror",
-      "mode": "install",
-      "index": 1,
-      "cpu": "Skylake-Server-v4",
-      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
-    },
-    {
-      "name": "Windows 10 1507, 10240 (LTSB 2015)",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446.iso",
-      "sha1": "264d48c902e6b586a1ed965062f7da4d4da99b35",
-      "source": "mirror",
-      "mode": "install",
-      "index": 1,
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows Server 2012 R2, 9600 (evaluation)",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US",
-      "sha1": "",
-      "source": "Microsoft",
-      "mode": "install",
-      "index": 1,
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows Server 2012, 9200 (evaluation)",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://download.microsoft.com/download/6/D/A/6DAB58BA-F939-451D-9101-7DE07DC09C03/9200.16384.WIN8_RTM.120725-1247_X64FRE_SERVER_EVAL_EN-US-HRM_SSS_X64FREE_EN-US_DV5.ISO",
-      "sha1": "",
-      "source": "Microsoft",
-      "mode": "install",
-      "index": 1,
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows 7 SP1, 7601",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/windows-7-sp1-updated-may-2011-en-msdn-aik/en_windows_7_enterprise_with_sp1_x64_dvd_u_677651.iso",
-      "sha1": "a491f985dccfb5863f31b728dddbedb2ff4df8d1",
-      "source": "mirror",
-      "mode": "install",
-      "index": 1,
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows Server 2016, 14393 (evaluation), Windows PE on Skylake-Server-v4",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US",
-      "sha1": "",
-      "source": "Microsoft",
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows Server 2016, 14393 (evaluation), Windows PE on Haswell-noTSX",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US",
-      "sha1": "",
-      "source": "Microsoft",
-      "cpu": "Haswell-noTSX"
-    },
-    {
-      "name": "Windows 10 1511, 10586, Windows PE on Skylake-Server-v4",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/Win10_1511_English_x64/Win10_1511_English_x64.iso",
-      "sha1": "875ec108288b9f581e5d8099cf0edb79f0f3e483",
-      "source": "mirror",
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows 10 1511, 10586, Windows PE on Haswell-noTSX",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/Win10_1511_English_x64/Win10_1511_English_x64.iso",
-      "sha1": "875ec108288b9f581e5d8099cf0edb79f0f3e483",
-      "source": "mirror",
-      "cpu": "Haswell-noTSX"
-    },
-    {
-      "name": "Windows 10 1507, 10240 (LTSB 2015), Windows PE on Skylake-Server-v4",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446.iso",
-      "sha1": "264d48c902e6b586a1ed965062f7da4d4da99b35",
-      "source": "mirror",
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows 10 1507, 10240 (LTSB 2015), Windows PE on Haswell-noTSX",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446.iso",
-      "sha1": "264d48c902e6b586a1ed965062f7da4d4da99b35",
-      "source": "mirror",
-      "cpu": "Haswell-noTSX"
-    },
-    {
-      "name": "Windows Server 2012 R2, 9600 (evaluation), Windows PE on Skylake-Server-v4",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US",
-      "sha1": "",
-      "source": "Microsoft",
-      "cpu": "Skylake-Server-v4"
-    },
-    {
-      "name": "Windows Server 2012 R2, 9600 (evaluation), Windows PE on Haswell-noTSX",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US",
-      "sha1": "",
-      "source": "Microsoft",
-      "cpu": "Haswell-noTSX"
+      "mode": "winpe"
     }
   ]
 }
