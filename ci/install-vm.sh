@@ -112,16 +112,22 @@ cp "$here/probes/$ARCH/"*.exe data/probe/
     echo 'exit /b'
     echo ':measure'
   fi
+  echo 'echo REPRO run.cmd on %U% > COM1'
   echo 'ver > %U%out.txt'
   echo '%U%kernel_ids.exe >> %U%out.txt 2>&1'
   echo 'reg query HKLM\SYSTEM\CurrentControlSet\Control\FeatureManagement\Overrides\3\1150694031 >> %U%out.txt 2>&1'
   echo '%U%probe.exe >> %U%out.txt 2>&1'
   echo 'echo PROBE-EXIT %ERRORLEVEL% >> %U%out.txt'
+  echo 'type %U%out.txt > COM1'
+  echo 'echo REPRO-END > COM1'
   echo 'shutdown /s /t 5 /f'
 } | sed 's/$/\r/' > data/probe/run.cmd
 # the removable drive may appear some seconds after the logon
 {
   echo '@echo off'
+  echo 'echo REPRO logon script started > COM1'
+  echo 'powercfg /change standby-timeout-ac 0'
+  echo 'powercfg /change hibernate-timeout-ac 0'
   echo 'for /l %%n in (1,1,120) do ('
   for d in C D E F G H I; do echo "  if exist $d:\\probe\\run.cmd call $d:\\probe\\run.cmd & exit"; done
   echo '  ping -n 4 127.0.0.1 > nul'
@@ -214,7 +220,7 @@ while kill -0 $pid 2> /dev/null; do
   sleep 30
   n=$((n + 1))
   python3 "$here/ci/screenshot.py" qmp.sock "$here/out/screens/$(printf '%04d' $n).png" 2> /dev/null || true
-  ls "$here/out/screens" | head -n -4 | while read -r old; do rm -f "$here/out/screens/$old"; done
+  ls "$here/out/screens" | head -n -4 | grep -v '0\.png$' | while read -r old; do rm -f "$here/out/screens/$old"; done
 done
 wait $pid || status=$?
 echo "guest $(( $(date +%s) - start )) s, QEMU status $status (124: stopped at the time limit), system disk $(du -sm system.qcow2 | cut -f1) MiB" | tee -a "$here/out/timing.txt"
@@ -224,7 +230,10 @@ mdir -i "$results" ::probe || true
 mcopy -n -i "$results" ::probe/out.txt "$here/out/raw.txt" || true
 mcopy -n -i "$results" ::probe/override.txt "$here/out/override.txt" 2> /dev/null || true
 rm -f usb.img pe.img source.iso system.qcow2 media.bin
-if [ -s "$here/out/raw.txt" ]; then tr -d '\r' < "$here/out/raw.txt" > "$here/out/out.txt"; else echo "no output from the guest" > "$here/out/out.txt"; fi
+grep -a 'REPRO' serial.txt | tr -d '\r' | head -20 || true
+if [ -s "$here/out/raw.txt" ]; then tr -d '\r' < "$here/out/raw.txt" > "$here/out/out.txt"
+elif grep -aq 'REPRO-END' serial.txt 2> /dev/null; then tr -d '\r' < serial.txt | sed -n '/REPRO run.cmd/,/REPRO-END/p' > "$here/out/out.txt"
+else echo "no output from the guest" > "$here/out/out.txt"; fi
 rm -f "$here/out/raw.txt"
 cat "$here/out/out.txt"
 if grep -q 'RESULT: the exception context dropped\|^RESULT LOSES' "$here/out/out.txt"; then result="loses state"

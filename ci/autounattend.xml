@@ -54,7 +54,7 @@
    <AutoLogon><Enabled>true</Enabled><Username>repro</Username><LogonCount>9</LogonCount>
     <Password><Value>Repro-guest-1</Value><PlainText>true</PlainText></Password></AutoLogon>
    <FirstLogonCommands>
-    <SynchronousCommand wcm:action="add"><Order>1</Order><CommandLine>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v EnableLUA /t REG_DWORD /d 0 /f</CommandLine></SynchronousCommand>
+    <SynchronousCommand wcm:action="add"><Order>1</Order><CommandLine>cmd /c echo REPRO first logon &gt; COM1</CommandLine></SynchronousCommand>
     <SynchronousCommand wcm:action="add"><Order>2</Order><CommandLine>cmd /c "for /l %n in (1,1,120) do @(for %i in (C D E F G H I) do @if exist %i:\probe\logon.cmd (copy /y %i:\probe\logon.cmd C:\repro-logon.cmd &amp; exit)) &amp; ping -n 4 127.0.0.1 &gt;nul"</CommandLine></SynchronousCommand>
     <SynchronousCommand wcm:action="add"><Order>3</Order><CommandLine>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v repro /t REG_SZ /d "cmd /c C:\repro-logon.cmd" /f</CommandLine></SynchronousCommand>
     <SynchronousCommand wcm:action="add"><Order>4</Order><CommandLine>cmd /c C:\repro-logon.cmd</CommandLine></SynchronousCommand>
