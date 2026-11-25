@@ -23,9 +23,10 @@ jobs:
         run: |
           jq -c '[.images[] as $i | ($i.configurations // ["none"])[] as $c
                   | {name: $i.name, arch: $i.arch, type: $i.type, url: $i.url, sha1: ($i.sha1 // ""),
-                     boot: ($i.boot // "uefi"), cpu: ($i.cpu // "host"), override: $c}]
+                     boot: ($i.boot // "uefi"), cpu: ($i.cpu // "host"), mode: ($i.mode // "winpe"),
+                     index: ($i.index // 1), key: ($i.key // ""), override: $c}]
                  | to_entries | map(.value + {id: .key})' ci/windows-images.json > matrix.json
-          jq -r '.[] | "\(.id)\t\(.arch)\t\(.name)\t\(.override)"' matrix.json
+          jq -r '.[] | "\(.id)\t\(.arch)\t\(.mode)\t\(.name)\t\(.override)"' matrix.json
           echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
       - name: Toolchain (llvm-mingw, msvcrt)
         env:
@@ -50,7 +51,7 @@ jobs:
           retention-days: 7
 
   vm:
-    name: ${{ matrix.arch }}, ${{ matrix.name }}, ${{ matrix.override == 'none' && 'as shipped' || format('override {0}', matrix.override) }}
+    name: ${{ matrix.arch }}, ${{ matrix.name }}, ${{ matrix.mode == 'install' && 'installed' || (matrix.override == 'none' && 'as shipped' || format('override {0}', matrix.override)) }}
     needs: setup
     runs-on: ${{ matrix.arch == 'x64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     timeout-minutes: 240
@@ -77,7 +78,7 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq wimtools mtools dosfstools genisoimage libhivex-bin libwin-hivex-perl \
+          sudo apt-get install -y -qq wimtools mtools dosfstools genisoimage qemu-utils libhivex-bin libwin-hivex-perl \
             ${{ matrix.arch == 'x64' && 'qemu-system-x86 ovmf' || 'qemu-system-arm qemu-efi-aarch64' }} > /dev/null
           sudo mkdir -p /mnt/work && sudo chown "$USER" /mnt/work
       - name: Run
@@ -91,8 +92,10 @@ jobs:
           BOOT: ${{ matrix.boot }}
           CPU: ${{ matrix.cpu }}
           OVERRIDE: ${{ matrix.override }}
-          LIMIT: ${{ matrix.arch == 'x64' && '1500' || '10800' }}
-        run: bash ci/winpe-vm.sh
+          INDEX: ${{ matrix.index }}
+          KEY: ${{ matrix.key }}
+          LIMIT: ${{ matrix.mode == 'install' && '5400' || (matrix.arch == 'x64' && '1500' || '10800') }}
+        run: bash ci/${{ matrix.mode == 'install' && 'install-vm.sh' || 'winpe-vm.sh' }}
       - name: Summary
         if: always()
         run: |

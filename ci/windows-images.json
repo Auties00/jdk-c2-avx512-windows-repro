@@ -5,7 +5,9 @@
     "cpu: the QEMU CPU model of an x64 guest; the runner CPU is passed through unless stated.",
     "sha1: the SHA-1 published for the download; empty for Microsoft evaluation links, which publish none.",
     "Every medium is also checked against ci/kernel-hashes.tsv before it boots.",
-    "configurations: none (as shipped) or the EnabledState written to FeatureManagement override 3/1150694031."
+    "configurations: none (as shipped) or the EnabledState written to FeatureManagement override 3/1150694031.",
+    "mode: winpe (boot the Windows PE of the medium, the default) or install (install image index, then measure).",
+    "key: a generic installation key from Microsoft documentation, for media that ask for one."
   ],
   "images": [
     {
@@ -203,25 +205,6 @@
       "source": "Microsoft"
     },
     {
-      "name": "Windows Server 2012, 9200 (evaluation)",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://download.microsoft.com/download/6/D/A/6DAB58BA-F939-451D-9101-7DE07DC09C03/9200.16384.WIN8_RTM.120725-1247_X64FRE_SERVER_EVAL_EN-US-HRM_SSS_X64FREE_EN-US_DV5.ISO",
-      "sha1": "",
-      "source": "Microsoft",
-      "cpu": "Haswell-noTSX"
-    },
-    {
-      "name": "Windows 7 SP1, 7601",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/windows-7-sp1-updated-may-2011-en-msdn-aik/en_windows_7_enterprise_with_sp1_x64_dvd_u_677651.iso",
-      "sha1": "a491f985dccfb5863f31b728dddbedb2ff4df8d1",
-      "source": "mirror",
-      "boot": "bios",
-      "cpu": "Haswell-noTSX"
-    },
-    {
       "name": "Windows 11 24H2, 26100.1742 (evaluation)",
       "arch": "arm64",
       "type": "iso",
@@ -297,6 +280,145 @@
       "url": "http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2018/07/17134.112.180619-1212.rs4_release_svc_refresh_clientconsumer_ret_a64fre_en-us_2de6ac28afcc0f2985a994356f8d8549e91f9378.esd",
       "sha1": "2de6ac28afcc0f2985a994356f8d8549e91f9378",
       "source": "Microsoft"
+    },
+    {
+      "name": "Windows Server 2016, 14393 (evaluation)",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US",
+      "sha1": "",
+      "source": "Microsoft",
+      "mode": "install",
+      "index": 1,
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows 10 1511, 10586",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/Win10_1511_English_x64/Win10_1511_English_x64.iso",
+      "sha1": "875ec108288b9f581e5d8099cf0edb79f0f3e483",
+      "source": "mirror",
+      "mode": "install",
+      "index": 1,
+      "cpu": "Skylake-Server-v4",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
+    },
+    {
+      "name": "Windows 10 1507, 10240 (LTSB 2015)",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446.iso",
+      "sha1": "264d48c902e6b586a1ed965062f7da4d4da99b35",
+      "source": "mirror",
+      "mode": "install",
+      "index": 1,
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows Server 2012 R2, 9600 (evaluation)",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US",
+      "sha1": "",
+      "source": "Microsoft",
+      "mode": "install",
+      "index": 1,
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows Server 2012, 9200 (evaluation)",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://download.microsoft.com/download/6/D/A/6DAB58BA-F939-451D-9101-7DE07DC09C03/9200.16384.WIN8_RTM.120725-1247_X64FRE_SERVER_EVAL_EN-US-HRM_SSS_X64FREE_EN-US_DV5.ISO",
+      "sha1": "",
+      "source": "Microsoft",
+      "mode": "install",
+      "index": 1,
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows 7 SP1, 7601",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/windows-7-sp1-updated-may-2011-en-msdn-aik/en_windows_7_enterprise_with_sp1_x64_dvd_u_677651.iso",
+      "sha1": "a491f985dccfb5863f31b728dddbedb2ff4df8d1",
+      "source": "mirror",
+      "mode": "install",
+      "index": 1,
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows Server 2016, 14393 (evaluation), Windows PE on Skylake-Server-v4",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US",
+      "sha1": "",
+      "source": "Microsoft",
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows Server 2016, 14393 (evaluation), Windows PE on Haswell-noTSX",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US",
+      "sha1": "",
+      "source": "Microsoft",
+      "cpu": "Haswell-noTSX"
+    },
+    {
+      "name": "Windows 10 1511, 10586, Windows PE on Skylake-Server-v4",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/Win10_1511_English_x64/Win10_1511_English_x64.iso",
+      "sha1": "875ec108288b9f581e5d8099cf0edb79f0f3e483",
+      "source": "mirror",
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows 10 1511, 10586, Windows PE on Haswell-noTSX",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/Win10_1511_English_x64/Win10_1511_English_x64.iso",
+      "sha1": "875ec108288b9f581e5d8099cf0edb79f0f3e483",
+      "source": "mirror",
+      "cpu": "Haswell-noTSX"
+    },
+    {
+      "name": "Windows 10 1507, 10240 (LTSB 2015), Windows PE on Skylake-Server-v4",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446.iso",
+      "sha1": "264d48c902e6b586a1ed965062f7da4d4da99b35",
+      "source": "mirror",
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows 10 1507, 10240 (LTSB 2015), Windows PE on Haswell-noTSX",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446.iso",
+      "sha1": "264d48c902e6b586a1ed965062f7da4d4da99b35",
+      "source": "mirror",
+      "cpu": "Haswell-noTSX"
+    },
+    {
+      "name": "Windows Server 2012 R2, 9600 (evaluation), Windows PE on Skylake-Server-v4",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US",
+      "sha1": "",
+      "source": "Microsoft",
+      "cpu": "Skylake-Server-v4"
+    },
+    {
+      "name": "Windows Server 2012 R2, 9600 (evaluation), Windows PE on Haswell-noTSX",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US",
+      "sha1": "",
+      "source": "Microsoft",
+      "cpu": "Haswell-noTSX"
     }
   ]
 }

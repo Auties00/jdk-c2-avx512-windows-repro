@@ -190,7 +190,8 @@ if [ -s "$here/out/raw.txt" ]; then tr -d '\r' < "$here/out/raw.txt" > "$here/ou
 rm -f "$here/out/raw.txt"
 cat "$here/out/out.txt"
 if grep -q 'RESULT: the exception context dropped\|^RESULT LOSES' "$here/out/out.txt"; then result="loses state"
-elif grep -q '^RESULT: not applicable\|RESULT no-sve' "$here/out/out.txt"; then result="not applicable: the OS has not enabled the vector state in Windows PE"
+elif grep -q '^RESULT: not applicable' "$here/out/out.txt"; then result="not measured: the kernel left XSAVE off in Windows PE ($(sed -n 's/^RESULT: not applicable, [^(]*(\(.*\))/\1/p' "$here/out/out.txt" | head -1), CPU model $CPU)"
+elif grep -q 'RESULT no-sve' "$here/out/out.txt"; then result="not applicable: this Windows does not report SVE, so a process has no SVE state to lose"
 elif grep -q '^RESULT: \|^RESULT keeps' "$here/out/out.txt"; then result="keeps state"
 elif [ "$status" = 124 ]; then result="no result: the guest did not finish within $LIMIT seconds"
 else result="no result"; fi
