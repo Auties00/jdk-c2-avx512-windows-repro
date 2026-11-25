@@ -57,6 +57,8 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
+      # the account's runners are shared with other workflows
+      max-parallel: 12
       matrix:
         include: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
