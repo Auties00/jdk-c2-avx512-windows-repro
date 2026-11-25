@@ -230,7 +230,7 @@ while kill -0 $pid 2> /dev/null; do
   sleep 30
   n=$((n + 1))
   python3 "$here/ci/screenshot.py" qmp.sock "$here/out/screens/$(printf '%04d' $n).png" 2> /dev/null || true
-  ls "$here/out/screens" | head -n -4 | grep -v '0\.png$' | while read -r old; do rm -f "$here/out/screens/$old"; done
+  { ls "$here/out/screens" | head -n -4 | grep -v '0\.png$' || true; } | while read -r old; do rm -f "$here/out/screens/$old"; done
 done
 wait $pid || status=$?
 echo "guest $(( $(date +%s) - start )) s, QEMU status $status (124: stopped at the time limit), system disk $(du -sm system.qcow2 | cut -f1) MiB" | tee -a "$here/out/timing.txt"
