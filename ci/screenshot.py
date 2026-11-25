@@ -18,8 +18,12 @@ f.readline()
 def command(c):
     f.write(json.dumps(c) + "\n")
     f.flush()
-    while "return" not in f.readline():
-        pass
+    while True:
+        line = f.readline()
+        if not line:
+            sys.exit(1)        # the guest has gone
+        if '"return"' in line or '"error"' in line:
+            return
 
 
 command({"execute": "qmp_capabilities"})

@@ -12,7 +12,8 @@
       "type": "iso",
       "url": "https://go.microsoft.com/fwlink/p/?LinkID=2289031&clcid=0x409&culture=en-us&country=US",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "clock": "2024-12-01"
     },
     {
       "name": "Windows 11 25H2, 26200.7171",
@@ -25,8 +26,7 @@
         "1",
         "2"
       ],
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     }
   ]
 }

@@ -10,7 +10,7 @@ name: jdk notrap
 on:
   push:
     branches: [ci-jdk-notrap]
-    paths: ['ci/jdk-notrap.env', '.github/workflows/jdk-notrap.yml', 'ci/install-jdk-vm.sh', 'ci/jdk.cmd', 'ci/jdk-images.json']
+    paths: ['ci/jdk-notrap.env', '.github/workflows/jdk-notrap.yml', 'ci/install-jdk-vm.sh', 'ci/jdk.cmd', 'ci/jdk-images.json', 'ci/jdk-guest-scripts.py', 'ci/unattend.xml']
 
 jobs:
   setup:
@@ -120,12 +120,10 @@ jobs:
           TYPE: ${{ matrix.type }}
           URL: ${{ matrix.url }}
           SHA1: ${{ matrix.sha1 }}
-          BOOT: ${{ matrix.boot }}
           CPU: ${{ matrix.cpu }}
           OVERRIDE: ${{ matrix.override }}
           EDITION: ${{ matrix.edition }}
-          LEGACY: ${{ matrix.legacy }}
-          KEY: ${{ matrix.key }}
+          CLOCK: ${{ matrix.clock }}
           LIMIT: '12600'
         run: bash ci/install-jdk-vm.sh
       - name: Summary
