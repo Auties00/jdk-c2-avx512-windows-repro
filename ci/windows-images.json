@@ -6,8 +6,7 @@
     "  Windows PE of the medium: faster, but without the feature overrides an installed system has).",
     "sha1: the SHA-1 published for the download; empty for Microsoft evaluation links, which publish none.",
     "Every medium is also checked against ci/kernel-hashes.tsv before it boots.",
-    "edition: a regular expression for the image to install (first match); key: a generic installation key from",
-    "  Microsoft documentation, for media that ask for one. legacy: Windows 7 answer-file dialect.",
+    "edition: a regular expression for the image to install (first match).",
     "cpu: the QEMU CPU model of an x64 guest; the runner CPU is passed through unless stated.",
     "configurations: none (as shipped) or the EnabledState written to FeatureManagement override 3/1150694031."
   ],
@@ -32,8 +31,7 @@
         "1",
         "2"
       ],
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows 11 25H2, 26200.8246",
@@ -42,8 +40,7 @@
       "url": "https://archive.org/download/Windows-11-version-25H2-26200.8246-Part_1-ESD-Files/ESD%20Files/26200.8246.260413-0654.25h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_x64FRE_en-us.esd",
       "sha1": "78a057a4a9a88e12192e0464fafbd68e40434e55",
       "source": "mirror",
-      "edition": "^windows 1[01] pro$",
-      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
+      "edition": "^windows 1[01] pro$"
     },
     {
       "name": "Windows 11 26H2, 26300.9457 (evaluation)",
@@ -60,8 +57,7 @@
       "url": "https://archive.org/download/Windows-11-version-26H1-28000.3231-Part_1-ISO-Files/Files/en-us_windows_11_business_editions_version_26h1_updated_oct_2026_x64_dvd_921ccd7c.iso",
       "sha1": "6ce01b0f6687c193c7e4b4b1bbb3ce81fc5ebc4e",
       "source": "mirror",
-      "edition": "^windows 1[01] pro$",
-      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
+      "edition": "^windows 1[01] pro$"
     },
     {
       "name": "Windows Server 2025, 26100.1742 (evaluation)",
@@ -101,8 +97,7 @@
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/5c5cedfc-2821-4395-a497-c9c45ec24194/22631.2861.231204-0538.23H2_NI_RELEASE_SVC_REFRESH_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
       "sha1": "8d8b38a9f97b71446301f3a6170078aa445f4958",
       "source": "Microsoft",
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows 11 22H2, 22621.1702",
@@ -111,8 +106,7 @@
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/ec26d435-5d20-4563-9c75-b7726e55f93b/22621.1702.230505-1222.ni_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
       "sha1": "4232d743be089cc3141164ef79b66549795d3dbf",
       "source": "Microsoft",
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows 11 21H2, 22000.318",
@@ -121,8 +115,7 @@
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/d96da0ce-dcf2-4e28-b704-2c16a4a71573/22000.318.211104-1236.co_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
       "sha1": "fee9cfc5798f68b9a810b4c441690bf223beaf1e",
       "source": "Microsoft",
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Azure Stack HCI 21H2, 20349",
@@ -156,8 +149,7 @@
       "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/98e68b3e-e4d3-4769-8cd5-7ac465bb07f5/18362.356.190909-1636.19h1_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
       "sha1": "be0e7e220234af13911a3dee426b80bb28caa19d",
       "source": "Microsoft",
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows Server 2019, 17763.3650 (evaluation)",
@@ -175,8 +167,7 @@
       "url": "http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2018/07/17134.112.180619-1212.rs4_release_svc_refresh_clientconsumer_ret_x64fre_en-us_fdb17a968240f487e3a425f5005d9ae1b954ca99.esd",
       "sha1": "fdb17a968240f487e3a425f5005d9ae1b954ca99",
       "source": "Microsoft",
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows 10 1709, 16299.125",
@@ -185,8 +176,7 @@
       "url": "http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2017/12/16299.125.171213-1220.rs3_release_svc_refresh_clientconsumer_ret_x64fre_en-us_f310e471b8629577b472185adf1a7d4ad9f929f7.esd",
       "sha1": "f310e471b8629577b472185adf1a7d4ad9f929f7",
       "source": "Microsoft",
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows 10 1703, 15063",
@@ -195,8 +185,7 @@
       "url": "https://archive.org/download/Win10_1703_English_x64/Win10_1703_English_x64.iso",
       "sha1": "ce8005a659e8df7fe9b080352cb1c313c3e9adce",
       "source": "mirror",
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows Server 2016, 14393 (evaluation)",
@@ -216,7 +205,6 @@
       "sha1": "875ec108288b9f581e5d8099cf0edb79f0f3e483",
       "source": "mirror",
       "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T",
       "cpu": "Skylake-Server-v4"
     },
     {
@@ -226,7 +214,6 @@
       "url": "https://archive.org/download/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446/en_windows_10_enterprise_2015_ltsb_x64_dvd_6848446.iso",
       "sha1": "264d48c902e6b586a1ed965062f7da4d4da99b35",
       "source": "mirror",
-      "key": "WNMTR-4C88C-JK8YV-HQ7T2-76DF9",
       "cpu": "Skylake-Server-v4"
     },
     {
@@ -250,24 +237,13 @@
       "cpu": "Skylake-Server-v4"
     },
     {
-      "name": "Windows 7 SP1, 7601",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://archive.org/download/windows-7-sp1-updated-may-2011-en-msdn-aik/en_windows_7_enterprise_with_sp1_x64_dvd_u_677651.iso",
-      "sha1": "a491f985dccfb5863f31b728dddbedb2ff4df8d1",
-      "source": "mirror",
-      "legacy": "yes",
-      "cpu": "Skylake-Server-v4"
-    },
-    {
       "name": "Windows 11 25H2, 26200.7171",
       "arch": "arm64",
       "type": "esd",
       "url": "https://archive.org/download/Windows-11-version-25H2-26200.7171-Part_1-ESD-Files/ESD%20Files/26200.7171.251109-0334.25h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
       "sha1": "080edc838239129f12f20d1663358b518e8e7c8a",
       "source": "mirror",
-      "edition": "^windows 1[01] pro( technical preview)?$",
-      "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows 11 24H2, 26100.1742 (evaluation)",

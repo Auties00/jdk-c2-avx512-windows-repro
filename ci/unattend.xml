@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Answer file of the first boot of an image applied by ci/install-vm.sh: no questions, one local account that
+     exists only inside the throwaway guest. Windows then runs \Windows\Setup\Scripts\SetupComplete.cmd. -->
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+ <settings pass="specialize">
+  <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="@ARCH@" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+   <ComputerName>REPRO</ComputerName>
+  </component>
+  <component name="Microsoft-Windows-Deployment" processorArchitecture="@ARCH@" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+   <RunSynchronous>
+    <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE /v BypassNRO /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+   </RunSynchronous>
+  </component>
+ </settings>
+ <settings pass="oobeSystem">
+  <component name="Microsoft-Windows-International-Core" processorArchitecture="@ARCH@" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+   <InputLocale>en-US</InputLocale><SystemLocale>en-US</SystemLocale><UILanguage>en-US</UILanguage><UserLocale>en-US</UserLocale>
+  </component>
+  <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="@ARCH@" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+   <OOBE><HideEULAPage>true</HideEULAPage><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+    <NetworkLocation>Work</NetworkLocation><ProtectYourPC>3</ProtectYourPC><SkipMachineOOBE>true</SkipMachineOOBE><SkipUserOOBE>true</SkipUserOOBE></OOBE>
+   <UserAccounts>
+    <AdministratorPassword><Value>Repro-guest-1</Value><PlainText>true</PlainText></AdministratorPassword>
+    <LocalAccounts><LocalAccount wcm:action="add"><Name>repro</Name><Group>Administrators</Group>
+     <Password><Value>Repro-guest-1</Value><PlainText>true</PlainText></Password></LocalAccount></LocalAccounts>
+   </UserAccounts>
+  </component>
+ </settings>
+</unattend>

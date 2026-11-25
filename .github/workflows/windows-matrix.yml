@@ -24,7 +24,7 @@ jobs:
           jq -c '[.images[] as $i | ($i.configurations // ["none"])[] as $c
                   | {name: $i.name, arch: $i.arch, type: $i.type, url: $i.url, sha1: ($i.sha1 // ""),
                      boot: ($i.boot // "uefi"), cpu: ($i.cpu // "host"), mode: ($i.mode // "install"),
-                     edition: ($i.edition // "."), key: ($i.key // ""), legacy: ($i.legacy // ""), override: $c}]
+                     edition: ($i.edition // "."), override: $c}]
                  | to_entries | map(.value + {id: .key})' ci/windows-images.json > matrix.json
           jq -r '.[] | "\(.id)\t\(.arch)\t\(.mode)\t\(.name)\t\(.override)"' matrix.json
           echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
@@ -80,7 +80,7 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq wimtools mtools dosfstools genisoimage qemu-utils libhivex-bin libwin-hivex-perl \
+          sudo apt-get install -y -qq wimtools mtools dosfstools genisoimage qemu-utils ntfs-3g libhivex-bin libwin-hivex-perl \
             ${{ matrix.arch == 'x64' && 'qemu-system-x86 ovmf' || 'qemu-system-arm qemu-efi-aarch64' }} > /dev/null
           sudo mkdir -p /mnt/work && sudo chown "$USER" /mnt/work
       - name: Run
@@ -95,8 +95,6 @@ jobs:
           CPU: ${{ matrix.cpu }}
           OVERRIDE: ${{ matrix.override }}
           EDITION: ${{ matrix.edition }}
-          LEGACY: ${{ matrix.legacy }}
-          KEY: ${{ matrix.key }}
           LIMIT: ${{ matrix.mode == 'install' && (matrix.arch == 'x64' && '6600' || '19800') || (matrix.arch == 'x64' && '1500' || '10800') }}
         run: bash ci/${{ matrix.mode == 'install' && 'install-vm.sh' || 'winpe-vm.sh' }}
       - name: Summary
