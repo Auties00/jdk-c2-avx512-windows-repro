@@ -118,6 +118,14 @@ cp "$here/probes/$ARCH/"*.exe data/probe/
   echo 'echo PROBE-EXIT %ERRORLEVEL% >> %U%out.txt'
   echo 'shutdown /s /t 5 /f'
 } | sed 's/$/\r/' > data/probe/run.cmd
+# the removable drive may appear some seconds after the logon
+{
+  echo '@echo off'
+  echo 'for /l %%n in (1,1,120) do ('
+  for d in C D E F G H I; do echo "  if exist $d:\\probe\\run.cmd call $d:\\probe\\run.cmd & exit"; done
+  echo '  ping -n 4 127.0.0.1 > nul'
+  echo ')'
+} | sed 's/$/\r/' > data/probe/logon.cmd
 key=""
 if [ -n "$KEY" ]; then key="<ProductKey><Key>$KEY</Key><WillShowUI>OnError</WillShowUI></ProductKey>"; fi
 if [ "$ARCH" = x64 ] && [ "$TYPE" = iso ]; then layout=mbr; else layout=gpt; fi
@@ -171,13 +179,13 @@ echo "::endgroup::"
 
 echo "::group::guest"
 if [ "$ARCH" = x64 ] && [ "$TYPE" = iso ]; then
-  set -- qemu-system-x86_64 -accel kvm -cpu "$CPU" -machine pc -smp 4 -m 8192 -vga std \
+  set -- qemu-system-x86_64 -accel kvm -cpu "$CPU,hv-relaxed,hv-vapic,hv-time,hv-spinlocks=0x1fff" -machine pc -smp 4 -m 8192 -vga std \
     -drive file=system.qcow2,if=ide,index=0,media=disk,cache=unsafe \
     -drive file=media.bin,format=raw,if=ide,index=2,media=cdrom,readonly=on -boot order=cd \
     -usb -device usb-storage,drive=usb,removable=on -drive if=none,id=usb,format=raw,file=usb.img
 elif [ "$ARCH" = x64 ]; then
   cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
-  set -- qemu-system-x86_64 -accel kvm -cpu "$CPU" -machine q35 -smp 4 -m 8192 -vga std \
+  set -- qemu-system-x86_64 -accel kvm -cpu "$CPU,hv-relaxed,hv-vapic,hv-time,hv-spinlocks=0x1fff" -machine q35 -smp 4 -m 8192 -vga std \
     -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=vars.fd \
     -drive if=none,id=sys,file=system.qcow2,cache=unsafe -device ide-hd,drive=sys,bus=ide.0,bootindex=0 \
     -drive if=none,id=pe,format=raw,file=pe.img -device ide-hd,drive=pe,bus=ide.1,bootindex=1 \

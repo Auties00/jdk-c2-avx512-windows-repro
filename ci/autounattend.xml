@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Answer file template of ci/install-vm.sh (filled by ci/answer-file.py): installs one image on the empty disk of
-     a throwaway guest, logs on and runs \probe\run.cmd from the drive that holds it at every logon. The account
+     a throwaway guest, logs on and runs \probe\run.cmd from the drive that holds it at every logon (through \probe\logon.cmd, which waits for that drive). The account
      exists only inside that guest. The LabConfig values let Windows 11 install on the plain virtual machine. -->
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
  <settings pass="windowsPE">
@@ -55,8 +55,9 @@
     <Password><Value>Repro-guest-1</Value><PlainText>true</PlainText></Password></AutoLogon>
    <FirstLogonCommands>
     <SynchronousCommand wcm:action="add"><Order>1</Order><CommandLine>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v EnableLUA /t REG_DWORD /d 0 /f</CommandLine></SynchronousCommand>
-    <SynchronousCommand wcm:action="add"><Order>2</Order><CommandLine>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v repro /t REG_SZ /d "cmd /c for %i in (C D E F G H I) do if exist %i:\probe\run.cmd call %i:\probe\run.cmd" /f</CommandLine></SynchronousCommand>
-    <SynchronousCommand wcm:action="add"><Order>3</Order><CommandLine>cmd /c for %i in (C D E F G H I) do if exist %i:\probe\run.cmd call %i:\probe\run.cmd</CommandLine></SynchronousCommand>
+    <SynchronousCommand wcm:action="add"><Order>2</Order><CommandLine>cmd /c "for /l %n in (1,1,120) do @(for %i in (C D E F G H I) do @if exist %i:\probe\logon.cmd (copy /y %i:\probe\logon.cmd C:\repro-logon.cmd &amp; exit)) &amp; ping -n 4 127.0.0.1 &gt;nul"</CommandLine></SynchronousCommand>
+    <SynchronousCommand wcm:action="add"><Order>3</Order><CommandLine>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v repro /t REG_SZ /d "cmd /c C:\repro-logon.cmd" /f</CommandLine></SynchronousCommand>
+    <SynchronousCommand wcm:action="add"><Order>4</Order><CommandLine>cmd /c C:\repro-logon.cmd</CommandLine></SynchronousCommand>
    </FirstLogonCommands>
   </component>
  </settings>
