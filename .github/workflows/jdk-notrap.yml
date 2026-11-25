@@ -63,7 +63,7 @@ jobs:
             cp "$(find "dl/$tag" -name 'jdk-windows-x64.zip' | head -1)" "jdks/$tag.zip"
           done
           ls -l jdks
-          sha256sum jdks/*.zip | tee jdks/SHA256SUMS
+          (cd jdks && sha256sum *.zip | tee SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
           name: probes
