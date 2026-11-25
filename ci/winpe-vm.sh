@@ -27,6 +27,7 @@ mkdir -p "$work" out/screens
 cd "$work"
 
 finish() {  # finish <result text>: writes the result line
+  [ -f "$here/out/out.txt" ] || : > "$here/out/out.txt"
   local kernel reported state cpu
   kernel=$(sed -n 's/^KVER file .*ntoskrnl.exe: [0-9]*\.[0-9]*\.\([0-9]*\.[0-9]*\).*/\1/p' "$here/out/out.txt" 2>/dev/null | head -1)
   reported=$(sed -n 's/^KVER class222 status 0x00000000 .* version \([0-9.]*\).*/\1/p' "$here/out/out.txt" 2>/dev/null | head -1)
