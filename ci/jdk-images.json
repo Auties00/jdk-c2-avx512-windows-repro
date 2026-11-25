@@ -1,0 +1,32 @@
+{
+  "comment": [
+    "The media jdk-notrap.yml installs to run the JDK reproducer, copied from windows-images.json (ci-windows-matrix):",
+    "Windows 11 24H2 26100.1742 (affected) as shipped, and Windows 11 25H2 26200.7171 (gated kernel 26100.7171) with",
+    "feature 58474193 disabled (EnabledState 1, loses the state) and enabled (EnabledState 2, keeps it: the control).",
+    "Every medium is checked against its SHA-1 or ci/kernel-hashes.tsv before it boots, as in install-vm.sh."
+  ],
+  "images": [
+    {
+      "name": "Windows 11 24H2, 26100.1742 (evaluation)",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/p/?LinkID=2289031&clcid=0x409&culture=en-us&country=US",
+      "sha1": "",
+      "source": "Microsoft"
+    },
+    {
+      "name": "Windows 11 25H2, 26200.7171",
+      "arch": "x64",
+      "type": "esd",
+      "url": "https://archive.org/download/Windows-11-version-25H2-26200.7171-Part_1-ESD-Files/ESD%20Files/26200.7171.251109-0334.25h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
+      "sha1": "989c214ee2708362d425af82ace496d45638dcc6",
+      "source": "mirror",
+      "configurations": [
+        "1",
+        "2"
+      ],
+      "edition": "^windows 1[01] pro( technical preview)?$",
+      "key": "W269N-WFGWX-YVC9B-4J6C9-T83GX"
+    }
+  ]
+}
