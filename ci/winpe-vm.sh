@@ -181,7 +181,7 @@ n=0
 while kill -0 $pid 2> /dev/null; do
   sleep 8
   n=$((n + 1))
-  python3 "$here/ci/screenshot.py" qmp.sock "$here/out/screens/$(printf '%04d' $n).png" 2> /dev/null || true
+  timeout 25 python3 "$here/ci/screenshot.py" qmp.sock "$here/out/screens/$(printf '%04d' $n).png" 2> /dev/null || true
   ls "$here/out/screens" | head -n -4 | while read -r old; do rm -f "$here/out/screens/$old"; done
 done
 wait $pid || status=$?

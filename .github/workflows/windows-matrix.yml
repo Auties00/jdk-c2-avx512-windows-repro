@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
+      x64: ${{ steps.matrix.outputs.x64 }}
+      arm64: ${{ steps.matrix.outputs.arm64 }}
     steps:
       - uses: actions/checkout@v4
       - name: Matrix
@@ -27,7 +28,8 @@ jobs:
                      edition: ($i.edition // "."), override: $c}]
                  | to_entries | map(.value + {id: .key})' ci/windows-images.json > matrix.json
           jq -r '.[] | "\(.id)\t\(.arch)\t\(.mode)\t\(.name)\t\(.override)"' matrix.json
-          echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "x64=$(jq -c '[.[] | select(.arch == "x64")]' matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "arm64=$(jq -c '[.[] | select(.arch == "arm64")]' matrix.json)" >> "$GITHUB_OUTPUT"
       - name: Toolchain (llvm-mingw, msvcrt)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -50,7 +52,7 @@ jobs:
           path: probes
           retention-days: 7
 
-  vm:
+  vm-x64:
     name: ${{ matrix.arch }}, ${{ matrix.name }}, ${{ matrix.mode == 'install' && 'installed' || (matrix.override == 'none' && 'as shipped' || format('override {0}', matrix.override)) }}
     needs: setup
     runs-on: ${{ matrix.arch == 'x64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
@@ -60,7 +62,7 @@ jobs:
       # the account's runners are shared with other workflows
       max-parallel: 12
       matrix:
-        include: ${{ fromJSON(needs.setup.outputs.matrix) }}
+        include: ${{ fromJSON(needs.setup.outputs.x64) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -95,7 +97,70 @@ jobs:
           CPU: ${{ matrix.cpu }}
           OVERRIDE: ${{ matrix.override }}
           EDITION: ${{ matrix.edition }}
-          LIMIT: ${{ matrix.mode == 'install' && (matrix.arch == 'x64' && '6600' || '19800') || (matrix.arch == 'x64' && '1500' || '10800') }}
+          LIMIT: ${{ matrix.mode == 'install' && (matrix.arch == 'x64' && '6600' || '10800') || (matrix.arch == 'x64' && '1500' || '4500') }}
+        run: bash ci/${{ matrix.mode == 'install' && 'install-vm.sh' || 'winpe-vm.sh' }}
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '```'
+            cat out/result.txt 2>/dev/null || echo "no result line"
+            grep -E '^(Microsoft Windows|KVER|cpu|xcr0|vector state|RESULT|SVE vector|PF_ARM|pattern|PROBE-EXIT| *EnabledState)' out/out.txt 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result-${{ matrix.id }}
+          path: out
+          retention-days: 30
+
+  vm-arm64:
+    name: ${{ matrix.arch }}, ${{ matrix.name }}, ${{ matrix.mode == 'install' && 'installed' || (matrix.override == 'none' && 'as shipped' || format('override {0}', matrix.override)) }}
+    needs: setup
+    runs-on: ${{ matrix.arch == 'x64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      # emulated guests are slow; few at a time, so that other workflows keep getting runners
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.arm64) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: probes
+          path: probes
+      - name: Host
+        run: |
+          lscpu | grep -E 'Model name|^CPU\(s\)' || true
+          free -g | head -2; df -h / /mnt 2>/dev/null || df -h /
+      - name: Allow KVM for the runner user
+        if: matrix.arch == 'x64'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wimtools mtools dosfstools genisoimage qemu-utils ntfs-3g libhivex-bin libwin-hivex-perl \
+            ${{ matrix.arch == 'x64' && 'qemu-system-x86 ovmf' || 'qemu-system-arm qemu-efi-aarch64' }} > /dev/null
+          sudo mkdir -p /mnt/work && sudo chown "$USER" /mnt/work
+      - name: Run
+        env:
+          WORK: /mnt/work
+          NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+          TYPE: ${{ matrix.type }}
+          URL: ${{ matrix.url }}
+          SHA1: ${{ matrix.sha1 }}
+          BOOT: ${{ matrix.boot }}
+          CPU: ${{ matrix.cpu }}
+          OVERRIDE: ${{ matrix.override }}
+          EDITION: ${{ matrix.edition }}
+          LIMIT: ${{ matrix.mode == 'install' && (matrix.arch == 'x64' && '6600' || '10800') || (matrix.arch == 'x64' && '1500' || '4500') }}
         run: bash ci/${{ matrix.mode == 'install' && 'install-vm.sh' || 'winpe-vm.sh' }}
       - name: Summary
         if: always()
@@ -115,7 +180,7 @@ jobs:
 
   summary:
     name: collect the results
-    needs: vm
+    needs: [vm-x64, vm-arm64]
     if: always()
     runs-on: ubuntu-24.04
     steps:
