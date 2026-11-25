@@ -88,7 +88,8 @@
       "type": "iso",
       "url": "https://aka.ms/HCIReleaseImage",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "mode": "winpe"
     },
     {
       "name": "Windows 11 23H2, 22631.2861",
@@ -123,7 +124,26 @@
       "type": "iso",
       "url": "https://aka.ms/2CNBagfhSZ8BM7jyEV8I",
       "sha1": "",
-      "source": "Microsoft"
+      "source": "Microsoft",
+      "mode": "winpe"
+    },
+    {
+      "name": "Azure Stack HCI 20H2, 17784.1408",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://software-download.microsoft.com/download/pr/AzureStackHCI_17784.1408_EN-US.iso",
+      "sha1": "032d60fa9700ed15f58eaac15b435e02ffea3017",
+      "source": "Microsoft",
+      "mode": "winpe"
+    },
+    {
+      "name": "Windows 11 Canary, 29661.1000",
+      "arch": "x64",
+      "type": "iso",
+      "url": "https://archive.org/download/win1127h1_29661/29661.1000.260828-1602.RS_PRERELEASE_CLIENTMULTI_X64FRE_EN-US.ISO",
+      "sha1": "f963abc12e9a2ada30e3581a474e21b4c0325a22",
+      "source": "mirror",
+      "edition": "^windows 1[01] pro( technical preview)?$"
     },
     {
       "name": "Windows Server 2022, 20348 (evaluation)",
@@ -227,16 +247,6 @@
       "cpu": "Skylake-Server-v4"
     },
     {
-      "name": "Windows Server 2012, 9200 (evaluation)",
-      "arch": "x64",
-      "type": "iso",
-      "url": "https://download.microsoft.com/download/6/D/A/6DAB58BA-F939-451D-9101-7DE07DC09C03/9200.16384.WIN8_RTM.120725-1247_X64FRE_SERVER_EVAL_EN-US-HRM_SSS_X64FREE_EN-US_DV5.ISO",
-      "sha1": "",
-      "source": "Microsoft",
-      "edition": "serverstandard$|standard.*(desktop|gui)",
-      "cpu": "Skylake-Server-v4"
-    },
-    {
       "name": "Windows 11 25H2, 26200.7171",
       "arch": "arm64",
       "type": "esd",
@@ -305,6 +315,15 @@
       "mode": "winpe"
     },
     {
+      "name": "Windows 10 22H2, 19045.3803",
+      "arch": "arm64",
+      "type": "esd",
+      "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/0796d7b4-b59c-4aac-9b29-64666728c3e3/19045.3803.231204-0204.22h2_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
+      "sha1": "21d0723b6c8e8be77e332aa44c77c9463ab66d6a",
+      "source": "Microsoft",
+      "mode": "winpe"
+    },
+    {
       "name": "Windows 10 1903, 18362.356",
       "arch": "arm64",
       "type": "esd",
@@ -329,6 +348,15 @@
       "url": "http://fg.ds.b1.download.windowsupdate.com/c/Upgr/2018/07/17134.112.180619-1212.rs4_release_svc_refresh_clientconsumer_ret_a64fre_en-us_2de6ac28afcc0f2985a994356f8d8549e91f9378.esd",
       "sha1": "2de6ac28afcc0f2985a994356f8d8549e91f9378",
       "source": "Microsoft",
+      "mode": "winpe"
+    },
+    {
+      "name": "Windows 10 1709, 16299.15",
+      "arch": "arm64",
+      "type": "iso",
+      "url": "https://archive.org/download/windows_10_version_1709/Windows%2010%2C%20version%201709%20%5B16299.15%5D/16299.15.170928-1534.rs3_release_CLIENTMULTI_RET_A64FRE_en-us.iso",
+      "sha1": "cfc44d731b096889be5683c82d344c6210ec51f8",
+      "source": "mirror",
       "mode": "winpe"
     }
   ]
