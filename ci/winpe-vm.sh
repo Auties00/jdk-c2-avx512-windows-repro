@@ -42,7 +42,12 @@ finish() {  # finish <result text>: writes the result line
 }
 
 echo "::group::download and verify"
-curl -fsSL --retry 5 --retry-delay 10 -o media.bin "$URL"
+# resumable: a server may close a long transfer early
+for attempt in 1 2 3 4 5 6 7 8; do
+  if curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -C - -o media.bin "$URL"; then break; fi
+  echo "download attempt $attempt stopped at $(stat -c %s media.bin 2> /dev/null || echo 0) bytes"
+  sleep 15
+done
 ls -l media.bin
 if [ -n "$SHA1" ]; then
   got=$(sha1sum media.bin | cut -d' ' -f1)
