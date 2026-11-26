@@ -1,16 +1,18 @@
 name: jdk notrap
 
-# Runs the JDK reproducer (Repro.java) on installed Windows systems whose kernels lose AVX state when resuming from
-# an exception, with the JDK builds of a run of the "JDK-8365196 notrap CI" workflow of Auties00/jdk: the notrap
+# Runs the JDK reproducer (Repro.java) on Windows systems whose kernels lose AVX or SVE state when resuming from
+# an exception, and on controls that keep it, with the JDK builds of a run of the "JDK-8365196 notrap CI" workflow of Auties00/jdk: the notrap
 # build (AvoidLosableStateAtTraps on by default, and off), the unpatched base and scrub14. Each medium of
 # ci/jdk-images.json is installed in QEMU under KVM on a GitHub-hosted Linux runner by ci/install-jdk-vm.sh (a copy of
-# install-vm.sh of ci-windows-matrix that also runs ci/jdk.cmd in the guest). Media are verified before they boot;
+# install-vm.sh of ci-windows-matrix that also runs ci/jdk.cmd in the guest); the Arm64 media run in their Windows PE
+# under TCG (ci/winpe-jdk-vm.sh, a copy of winpe-vm.sh), with the windows-aarch64 bundles of the notrap build and of
+# the unpatched base. Media are verified before they boot;
 # the JDKs run only in the guest, which has no network. Only text results are uploaded.
 
 on:
   push:
     branches: [ci-jdk-notrap]
-    paths: ['ci/jdk-notrap.env', '.github/workflows/jdk-notrap.yml', 'ci/install-jdk-vm.sh', 'ci/jdk.cmd', 'ci/jdk-images.json', 'ci/jdk-guest-scripts.py', 'ci/unattend.xml']
+    paths: ['ci/jdk-notrap.env', '.github/workflows/jdk-notrap.yml', 'ci/install-jdk-vm.sh', 'ci/jdk.cmd', 'ci/jdk-images.json', 'ci/jdk-guest-scripts.py', 'ci/unattend.xml', 'ci/winpe-jdk-vm.sh']
 
 jobs:
   setup:
@@ -18,7 +20,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
+      x64: ${{ steps.matrix.outputs.x64 }}
+      arm64: ${{ steps.matrix.outputs.arm64 }}
     steps:
       - uses: actions/checkout@v4
       - name: Inputs
@@ -30,14 +33,14 @@ jobs:
       - name: Matrix
         id: matrix
         run: |
-          slots=$(seq -s, 1 "$SLOTS")
-          jq -c --argjson slots "[$slots]" '[.images[] as $i | ($i.configurations // ["none"])[] as $c | $slots[] as $s
+          jq -c --argjson n "$SLOTS" '[.images[] as $i | ($i.configurations // ["none"])[] as $c | range(1; ($i.slots // $n) + 1) as $s
                   | {name: $i.name, arch: $i.arch, type: $i.type, url: $i.url, sha1: ($i.sha1 // ""),
                      boot: ($i.boot // "uefi"), cpu: ($i.cpu // "host"), mode: ($i.mode // "install"),
                      edition: ($i.edition // "."), key: ($i.key // ""), legacy: ($i.legacy // ""), override: $c, slot: $s}]
                  | to_entries | map(.value + {id: .key})' ci/jdk-images.json > matrix.json
-          jq -r '.[] | "\(.id)\t\(.name)\t\(.override)\t\(.slot)"' matrix.json
-          echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
+          jq -r '.[] | "\(.id)\t\(.arch)\t\(.mode)\t\(.name)\t\(.override)\t\(.slot)"' matrix.json
+          echo "x64=$(jq -c '[.[] | select(.arch == "x64")]' matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "arm64=$(jq -c '[.[] | select(.arch == "arm64")]' matrix.json)" >> "$GITHUB_OUTPUT"
       - name: Toolchain (llvm-mingw, msvcrt)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,22 +51,27 @@ jobs:
           echo "$PWD/$(ls -d llvm-mingw-*/ | head -1)bin" >> "$GITHUB_PATH"
       - name: Build
         run: |
-          mkdir -p probes/x64
+          mkdir -p probes/x64 probes/arm64
           x86_64-w64-mingw32-clang -O2 -mxsave -o probes/x64/probe.exe native/xstate_stale_header.c -ladvapi32 -lversion
           x86_64-w64-mingw32-clang -O2 -o probes/x64/kernel_ids.exe native/kernel_ids.c -lversion
+          aarch64-w64-mingw32-clang -O2 -o probes/arm64/probe.exe native/sve_stale_header.c
+          aarch64-w64-mingw32-clang -O2 -o probes/arm64/kernel_ids.exe native/kernel_ids.c -lversion
           ls -l probes/*
       - name: JDK bundles
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p jdks
-          for pair in notrap:bundles-windows-x64 base:bundles-windows-x64-base scrub14:bundles-windows-x64-scrub14; do
-            tag=${pair%%:*}; artifact=${pair#*:}
-            gh run download "$JDK_RUN" -R Auties00/jdk -n "$artifact" -D "dl/$tag"
-            cp "$(find "dl/$tag" -name 'jdk-windows-x64.zip' | head -1)" "jdks/$tag.zip"
+          mkdir -p jdks/x64 jdks/arm64
+          # <arch>:<tag>:<run>:<artifact>
+          for spec in x64:notrap:$JDK_RUN:bundles-windows-x64 x64:base:$JDK_RUN:bundles-windows-x64-base \
+                      x64:scrub14:$JDK_RUN:bundles-windows-x64-scrub14 arm64:notrap:$JDK_ARM64_RUN:bundles-windows-aarch64 \
+                      arm64:base:$JDK_ARM64_BASE_RUN:bundles-windows-aarch64; do
+            IFS=: read -r arch tag run artifact <<< "$spec"
+            gh run download "$run" -R Auties00/jdk -n "$artifact" -D "dl/$arch-$tag"
+            cp "$(find "dl/$arch-$tag" -name 'jdk-windows-*.zip' | grep -v -e symbols -e debug | head -1)" "jdks/$arch/$tag.zip"
           done
-          ls -l jdks
-          (cd jdks && sha256sum *.zip | tee SHA256SUMS)
+          ls -l jdks/*
+          (cd jdks && sha256sum */*.zip | tee SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
           name: probes
@@ -84,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.setup.outputs.matrix) }}
+        include: ${{ fromJSON(needs.setup.outputs.x64) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -142,9 +150,76 @@ jobs:
           path: out
           retention-days: 30
 
+  vm-arm64:
+    name: arm64 Windows PE, ${{ matrix.name }}, ${{ matrix.override == 'none' && 'as shipped' || format('EnabledState={0}', matrix.override) }} (${{ matrix.slot }})
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.arm64) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: probes
+          path: probes
+      - uses: actions/download-artifact@v4
+        with:
+          name: jdks
+          path: jdks
+      - name: Host
+        run: |
+          lscpu | grep -E 'Model name|^CPU\(s\)|avx512f' | cut -c1-200 || true
+          grep -o -w -E 'avx512f|avx2' /proc/cpuinfo | sort | uniq -c || true
+          free -g | head -2; df -h / /mnt 2>/dev/null || df -h /
+          (cd jdks && sha256sum -c SHA256SUMS) && rm jdks/SHA256SUMS
+      - name: Allow KVM for the runner user
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wimtools mtools dosfstools genisoimage qemu-utils libhivex-bin libwin-hivex-perl \
+            qemu-system-arm qemu-efi-aarch64 > /dev/null
+          sudo mkdir -p /mnt/work && sudo chown "$USER" /mnt/work
+      - name: Run
+        env:
+          WORK: /mnt/work
+          NAME: ${{ matrix.name }}
+          ARCH: ${{ matrix.arch }}
+          TYPE: ${{ matrix.type }}
+          URL: ${{ matrix.url }}
+          SHA1: ${{ matrix.sha1 }}
+          CPU: ${{ matrix.cpu }}
+          OVERRIDE: ${{ matrix.override }}
+          EDITION: ${{ matrix.edition }}
+          CLOCK: ${{ matrix.clock }}
+          LIMIT: '18000'
+        run: bash ci/winpe-jdk-vm.sh
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '```'
+            cat out/result.txt 2>/dev/null || echo "no result line"
+            grep -E '^(Microsoft Windows|KVER|cpu|xcr0|vector state|RESULT|PROBE-EXIT| *EnabledState|JDK|JVMLOG|JDKRUN|siginfo|\[)' out/out.txt 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result-${{ matrix.id }}
+          path: out
+          retention-days: 30
+
   summary:
     name: collect the results
-    needs: vm
+    needs: [vm, vm-arm64]
     if: always()
     runs-on: ubuntu-24.04
     steps:

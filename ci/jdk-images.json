@@ -1,9 +1,13 @@
 {
   "comment": [
-    "The media jdk-notrap.yml installs to run the JDK reproducer, copied from windows-images.json (ci-windows-matrix):",
-    "Windows 11 24H2 26100.1742 (affected) as shipped, and Windows 11 25H2 26200.7171 (gated kernel 26100.7171) with",
-    "feature 58474193 disabled (EnabledState 1, loses the state) and enabled (EnabledState 2, keeps it: the control).",
-    "Every medium is checked against its SHA-1 or ci/kernel-hashes.tsv before it boots, as in install-vm.sh."
+    "The media jdk-notrap.yml runs the JDK reproducer on, copied from windows-images.json (ci-windows-matrix @ 743a664),",
+    "where each is verified against its SHA-1 or ci/kernel-hashes.tsv before it boots.",
+    "x64, installed under KVM: Windows 11 24H2 26100.1742 (affected) as shipped; Windows 11 25H2 26200.7171 (gated",
+    "kernel 26100.7171) with feature 58474193 disabled (EnabledState 1, loses the state) and enabled (2, keeps it);",
+    "Windows 11 22H2 22621.1702, a kernel without the bug (control).",
+    "arm64, in the medium's Windows PE under TCG (an installation takes hours), emulated Neoverse V1 with SVE:",
+    "26100.1742 (affected), 26200.7171 with EnabledState 1 and 2, and 26200.8246 (fixed, control).",
+    "clock: the guest's date, inside the evaluation period of an evaluation medium (no part in the measurement)."
   ],
   "images": [
     {
@@ -27,6 +31,50 @@
         "2"
       ],
       "edition": "^windows 1[01] pro( technical preview)?$"
+    },
+    {
+      "name": "Windows 11 22H2, 22621.1702",
+      "arch": "x64",
+      "type": "esd",
+      "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/ec26d435-5d20-4563-9c75-b7726e55f93b/22621.1702.230505-1222.ni_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
+      "sha1": "4232d743be089cc3141164ef79b66549795d3dbf",
+      "source": "Microsoft",
+      "edition": "^windows 1[01] pro( technical preview)?$",
+      "slots": 1
+    },
+    {
+      "name": "Windows 11 24H2, 26100.1742 (evaluation)",
+      "arch": "arm64",
+      "type": "iso",
+      "url": "https://go.microsoft.com/fwlink/?linkid=2269595&clcid=0x409&culture=en-us&country=us",
+      "sha1": "",
+      "source": "Microsoft",
+      "mode": "winpe",
+      "slots": 1
+    },
+    {
+      "name": "Windows 11 25H2, 26200.7171",
+      "arch": "arm64",
+      "type": "esd",
+      "url": "https://archive.org/download/Windows-11-version-25H2-26200.7171-Part_1-ESD-Files/ESD%20Files/26200.7171.251109-0334.25h2_ge_release_svc_refresh_CLIENTCONSUMER_RET_A64FRE_en-us.esd",
+      "sha1": "080edc838239129f12f20d1663358b518e8e7c8a",
+      "source": "mirror",
+      "mode": "winpe",
+      "configurations": [
+        "1",
+        "2"
+      ],
+      "slots": 1
+    },
+    {
+      "name": "Windows 11 25H2, 26200.8246",
+      "arch": "arm64",
+      "type": "esd",
+      "url": "https://archive.org/download/Windows-11-version-25H2-26200.8246-Part_1-ESD-Files/ESD%20Files/26200.8246.260413-0654.25h2_ge_release_svc_refresh_CLIENTBUSINESS_VOL_A64FRE_en-us.esd",
+      "sha1": "c3479c701dd2193939017242a67b7b1a2c74fb5b",
+      "source": "mirror",
+      "mode": "winpe",
+      "slots": 1
     }
   ]
 }

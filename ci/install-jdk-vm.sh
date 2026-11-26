@@ -1,6 +1,6 @@
 #!/bin/bash
 # A copy of install-vm.sh (ci-windows-matrix) that also runs the JDK reproducer (Repro.java) in the guest, with the
-# JDK builds given in jdks/*.zip (Windows x64 JDK bundles: notrap.zip, base.zip, scrub14.zip): SetupComplete.cmd
+# JDK builds given in jdks/x64/*.zip (Windows x64 JDK bundles: notrap.zip, base.zip, scrub14.zip): SetupComplete.cmd
 # runs ci/jdk.cmd after the native probe, and the result line adds one verdict per JDK configuration. The guest
 # clock is CLOCK (an ISO date) when set, so an evaluation medium past its evaluation period does not shut the
 # guest down every hour; the clock has no part in the measurement.
@@ -128,7 +128,7 @@ printf 'add winpeshl.ini /Windows/System32/winpeshl.ini\nadd guest/repro-install
   | wimlib-imagex update tree/sources/boot.wim "$image" > /dev/null
 mkdir -p tree/repro/probe
 cp "$here/probes/$ARCH/"*.exe tree/repro/probe/
-cp "$here/jdks/"*.zip "$here/Repro.java" tree/repro/probe/
+cp "$here/jdks/$ARCH/"*.zip "$here/Repro.java" tree/repro/probe/
 sed 's/$//' "$here/ci/jdk.cmd" > tree/repro/probe/jdk.cmd
 cp guest/unattend.xml guest/SetupComplete.cmd guest/disk.txt tree/repro/
 size=$(( $(du -sm tree | cut -f1) + 300 ))
@@ -208,7 +208,7 @@ elif grep -q '^RESULT: \|^RESULT keeps' "$here/out/out.txt"; then result="keeps 
 elif [ "$status" = 124 ]; then result="no result: the installation did not finish within $LIMIT seconds"
 else result="no result"; fi
 # one verdict per JDK configuration: how many runs of each were ok, wrong or crashed
-jdk=$(awk '/^JDKRUN / { tag = $2; sub(/^JDKRUN [^:]*: /, ""); v = $1; n[tag]++; if (v == "ok") ok[tag]++; else if (v == "WRONG") wr[tag]++; else if (v == "CRASH") cr[tag]++; else ex[tag]++ }
+jdk=$(awk '/^JDKRUN / { tag = $2; v = $0; sub(/^[^=]*= /, "", v); split(v, w, " "); v = w[1]; n[tag]++; if (v == "ok") ok[tag]++; else if (v == "WRONG") wr[tag]++; else if (v == "CRASH") cr[tag]++; else ex[tag]++ }
            END { for (t in n) printf "%s %d/%d ok%s%s%s; ", t, ok[t], n[t], (wr[t] ? ", " wr[t] " wrong" : ""), (cr[t] ? ", " cr[t] " crashed" : ""), (ex[t] ? ", " ex[t] " other" : "") }' "$here/out/out.txt")
 result="$result; Repro: ${jdk:-not run}"
 finish "$result"
