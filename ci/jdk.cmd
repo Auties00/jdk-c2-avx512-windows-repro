@@ -5,7 +5,7 @@ rem Each run adds one JDKRUN line to out.txt: ok (exit 0), WRONG (exit 3: a wron
 rem the exit code. Configurations: notrap (AvoidLosableStateAtTraps on, the default on Windows), base (the unpatched
 rem JDK), notrap-none (the notrap build with the mode and scrub14's scrub both off: no protection), notrap-off (the
 rem mode off, so scrub14's machinery protects instead), scrub14, and the nofpu variants without UseFPUForSpilling.
-rem On Arm64 (emulated, slow) fewer seeds run and Repro runs longer, and there is no scrub14 build.
+rem On Arm64 (emulated, slow) only the kernel runs, longer, and there is no scrub14 build.
 setlocal enabledelayedexpansion
 set U=%~dp0
 rem on the probe disk: Windows PE has only a small RAM disk
@@ -27,40 +27,31 @@ for %%z in (notrap base scrub14) do (
 echo JAVAC start >> %U%out.txt
 "!J_notrap!javac.exe" --add-modules jdk.incubator.vector -d %W%\classes %U%Repro.java %U%XStateKernel.java >> %U%out.txt 2>&1
 echo JAVAC exit !ERRORLEVEL! >> %U%out.txt
-set "NONE=-XX:-AvoidLosableStateAtTraps -XX:-ScrubExceptionXStateHeader"
+rem notrap-none: the notrap build with the mode and every older mitigation off (ExceptionXStateMitigation), so nothing
+rem protects compiled code; notrap-off: the mode off, so the older mitigations protect instead
+set "NONE=-XX:-AvoidLosableStateAtTraps -XX:-ExceptionXStateMitigation"
 rem no pipes: each JVM writes a file, and a marker line before it tells which one was running if the guest stops
 call :flags notrap notrap
-if /i not "%PROCESSOR_ARCHITECTURE%"=="ARM64" call :flags notrap-none notrap "%NONE%"
+call :flags notrap-none notrap "%NONE%"
 call :flags base base
 call :flags scrub14 scrub14
 rem the deterministic kernel first: stale header planted, vectors live across polls and a faulting null check
 if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
-  set "KSECS=60"
-  for %%n in (1 2) do (
-    call :kernel base base
-    call :kernel notrap notrap
-  )
-) else (
-  set "KSECS=10"
-  for %%n in (1 2 3) do (
-    call :kernel base base
-    call :kernel notrap notrap
-    call :kernel notrap-none notrap "%NONE%"
-  )
-  call :kernel notrap-off notrap -XX:-AvoidLosableStateAtTraps
-  call :kernel scrub14 scrub14
-)
-if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
-  set "ARGS=30 4"
-  rem no notrap-none here: ScrubExceptionXStateHeader is an x64 flag, and with the mode off the notrap build does
-  rem not use SVE on these kernels, so the unpatched base is the run without protection
-  for %%s in (13 25 39) do (
-    call :run notrap notrap %%s
-    call :run base base %%s
-  )
-  call :run notrap-off notrap 25 -XX:-AvoidLosableStateAtTraps
+  rem under emulation a slow host makes few calls a minute, and C2 code runs from about the fourth
+  set "KSECS=300"
+  call :kernel base base
+  call :kernel notrap notrap
+  call :kernel notrap-none notrap "%NONE%"
   goto :eof
 )
+set "KSECS=10"
+for %%n in (1 2 3) do (
+  call :kernel base base
+  call :kernel notrap notrap
+  call :kernel notrap-none notrap "%NONE%"
+)
+call :kernel notrap-off notrap -XX:-AvoidLosableStateAtTraps
+call :kernel scrub14 scrub14
 set "ARGS=10 4"
 rem seed 25 is the one that loses state most often under the unpatched base, so it runs four times
 for %%s in (13 18 25 39 54 25 25 25) do (
