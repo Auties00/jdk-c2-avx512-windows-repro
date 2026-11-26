@@ -12,7 +12,7 @@ name: jdk notrap
 on:
   push:
     branches: [ci-jdk-notrap]
-    paths: ['ci/jdk-notrap.env', '.github/workflows/jdk-notrap.yml', 'ci/install-jdk-vm.sh', 'ci/jdk.cmd', 'ci/jdk-images.json', 'ci/jdk-guest-scripts.py', 'ci/unattend.xml', 'ci/winpe-jdk-vm.sh']
+    paths: ['ci/jdk-notrap.env', '.github/workflows/jdk-notrap.yml', 'ci/install-jdk-vm.sh', 'ci/jdk.cmd', 'ci/jdk-images.json', 'ci/jdk-guest-scripts.py', 'ci/unattend.xml', 'ci/winpe-jdk-vm.sh', 'XStateKernel.java', 'native/xstatefill.c']
 
 jobs:
   setup:
@@ -72,6 +72,12 @@ jobs:
           done
           ls -l jdks/*
           (cd jdks && sha256sum */*.zip | tee SHA256SUMS)
+          # the JNI library of XStateKernel, against the headers of the notrap build
+          unzip -q jdks/x64/notrap.zip '*/include/*' -d inc
+          i=$(dirname "$(find inc -name jni.h | head -1)")
+          x86_64-w64-mingw32-clang -O2 -shared -I"$i" -I"$i/win32" -o probes/x64/xstatefill.dll native/xstatefill.c
+          aarch64-w64-mingw32-clang -O2 -shared -I"$i" -I"$i/win32" -o probes/arm64/xstatefill.dll native/xstatefill.c
+          ls -l probes/*
       - uses: actions/upload-artifact@v4
         with:
           name: probes

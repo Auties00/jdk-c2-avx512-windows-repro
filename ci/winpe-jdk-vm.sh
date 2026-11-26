@@ -143,7 +143,7 @@ mkdir -p data/probe
 cp "$here/probes/$ARCH/"*.exe data/probe/
 # unpacked here: Windows PE has no tar
 for z in "$here/jdks/$ARCH/"*.zip; do unzip -q "$z" -d "data/probe/jdk-$(basename "$z" .zip)"; done
-cp "$here/Repro.java" data/probe/
+cp "$here/Repro.java" "$here/XStateKernel.java" "$here/probes/$ARCH/"*.dll data/probe/
 sed 's/$//' "$here/ci/jdk.cmd" > data/probe/jdk.cmd
 {
   echo '@echo off'
@@ -206,6 +206,8 @@ echo "::endgroup::"
 
 mdir -i disk.img@@1M ::probe || true
 mcopy -n -i disk.img@@1M ::probe/out.txt "$here/out/raw.txt" || true
+# the logs of every JVM the guest ran (flags, kernel and Repro output)
+mkdir -p "$here/out/jdkrun" && mcopy -n -i disk.img@@1M "::jdkrun/*.txt" "$here/out/jdkrun/" 2> /dev/null || true
 rm -f disk.img boot.iso
 if [ -s "$here/out/raw.txt" ]; then tr -d '\r' < "$here/out/raw.txt" > "$here/out/out.txt"; else echo "no output from the guest" > "$here/out/out.txt"; fi
 rm -f "$here/out/raw.txt"
@@ -217,7 +219,7 @@ elif grep -q '^RESULT: \|^RESULT keeps' "$here/out/out.txt"; then result="keeps 
 elif [ "$status" = 124 ]; then result="no result: the guest did not finish within $LIMIT seconds"
 else result="no result"; fi
 # one verdict per JDK configuration: how many runs of each were ok, wrong or crashed
-jdk=$(awk '/^JDKRUN / { tag = $2; v = $0; sub(/^[^=]*= /, "", v); split(v, w, " "); v = w[1]; n[tag]++; if (v == "ok") ok[tag]++; else if (v == "WRONG") wr[tag]++; else if (v == "CRASH") cr[tag]++; else ex[tag]++ }
+jdk=$(awk '/^(JDKRUN|KERNEL) / { tag = ($1 == "KERNEL" ? "kernel:" : "") $2; v = $0; sub(/^[^=]*= /, "", v); split(v, w, " "); v = w[1]; n[tag]++; if (v == "ok") ok[tag]++; else if (v == "WRONG") wr[tag]++; else if (v == "CRASH") cr[tag]++; else ex[tag]++ }
            END { for (t in n) printf "%s %d/%d ok%s%s%s; ", t, ok[t], n[t], (wr[t] ? ", " wr[t] " wrong" : ""), (cr[t] ? ", " cr[t] " crashed" : ""), (ex[t] ? ", " ex[t] " other" : "") }' "$here/out/out.txt")
 result="$result; Repro: ${jdk:-not run}"
 finish "$result"

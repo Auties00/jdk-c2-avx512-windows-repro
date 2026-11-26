@@ -25,7 +25,7 @@ for %%z in (notrap base scrub14) do (
   )
 )
 echo JAVAC start >> %U%out.txt
-"!J_notrap!javac.exe" --add-modules jdk.incubator.vector -d %W%\classes %U%Repro.java >> %U%out.txt 2>&1
+"!J_notrap!javac.exe" --add-modules jdk.incubator.vector -d %W%\classes %U%Repro.java %U%XStateKernel.java >> %U%out.txt 2>&1
 echo JAVAC exit !ERRORLEVEL! >> %U%out.txt
 set "NONE=-XX:-AvoidLosableStateAtTraps -XX:-ScrubExceptionXStateHeader"
 rem no pipes: each JVM writes a file, and a marker line before it tells which one was running if the guest stops
@@ -33,6 +33,23 @@ call :flags notrap notrap
 if /i not "%PROCESSOR_ARCHITECTURE%"=="ARM64" call :flags notrap-none notrap "%NONE%"
 call :flags base base
 call :flags scrub14 scrub14
+rem the deterministic kernel first: stale header planted, vectors live across polls and a faulting null check
+if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
+  set "KSECS=60"
+  for %%n in (1 2) do (
+    call :kernel base base
+    call :kernel notrap notrap
+  )
+) else (
+  set "KSECS=10"
+  for %%n in (1 2 3) do (
+    call :kernel base base
+    call :kernel notrap notrap
+    call :kernel notrap-none notrap "%NONE%"
+  )
+  call :kernel notrap-off notrap -XX:-AvoidLosableStateAtTraps
+  call :kernel scrub14 scrub14
+)
 if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
   set "ARGS=30 4"
   rem no notrap-none here: ScrubExceptionXStateHeader is an x64 flag, and with the mode off the notrap build does
@@ -68,6 +85,23 @@ echo JVMLOG %1 start >> %U%out.txt
 "!JAVA!" -Xlog:os+cpu=info -XX:+UnlockDiagnosticVMOptions !EXTRA! -XX:+PrintFlagsFinal -version > %W%\flags_%1.txt 2>&1
 echo JVMLOG %1 exit !ERRORLEVEL! >> %U%out.txt
 findstr /i "kernel exception xsave capped resumed SVE UseAVX MaxVectorSize AvoidLosableStateAtTraps UseFPUForSpilling ScrubExceptionXStateHeader" %W%\flags_%1.txt >> %U%out.txt
+goto :eof
+
+rem :kernel <tag> <jdk> [flags]: XStateKernel under the flags of the JDK test TestExceptionXStateScrub
+:kernel
+if not defined J_%2 goto :eof
+set "JAVA=!J_%2!java.exe"
+set "EXTRA=%~3"
+set /a KN+=1
+del /q %W%\hs_*.log 2> nul
+echo KERNELSTART %1 >> %U%out.txt
+"!JAVA!" -XX:+UseG1GC -XX:+UnlockDiagnosticVMOptions -XX:+SafepointALot -XX:GuaranteedSafepointInterval=1 -XX:PerMethodTrapLimit=100000 -XX:PerBytecodeTrapLimit=100000 -XX:PerMethodRecompilationCutoff=-1 -XX:PerBytecodeRecompilationCutoff=-1 !EXTRA! -XX:-CreateCoredumpOnCrash -XX:ErrorFile=%W%\hs_%%p.log -Djava.library.path=%U% --add-modules jdk.incubator.vector -cp %W%\classes XStateKernel !KSECS! > %W%\kernel_%1_!KN!.txt 2>&1
+set CODE=!ERRORLEVEL!
+set "R=exit !CODE!"
+if "!CODE!"=="0" set R=ok
+if "!CODE!"=="3" set R=WRONG
+if exist %W%\hs_*.log set R=CRASH
+echo KERNEL %1 run !KN! [!EXTRA!] = !R! >> %U%out.txt
 goto :eof
 
 rem :run <tag> <jdk> <seed> [flags]

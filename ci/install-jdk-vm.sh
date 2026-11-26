@@ -128,7 +128,7 @@ printf 'add winpeshl.ini /Windows/System32/winpeshl.ini\nadd guest/repro-install
   | wimlib-imagex update tree/sources/boot.wim "$image" > /dev/null
 mkdir -p tree/repro/probe
 cp "$here/probes/$ARCH/"*.exe tree/repro/probe/
-cp "$here/jdks/$ARCH/"*.zip "$here/Repro.java" tree/repro/probe/
+cp "$here/jdks/$ARCH/"*.zip "$here/Repro.java" "$here/XStateKernel.java" "$here/probes/$ARCH/"*.dll tree/repro/probe/
 sed 's/$//' "$here/ci/jdk.cmd" > tree/repro/probe/jdk.cmd
 cp guest/unattend.xml guest/SetupComplete.cmd guest/disk.txt tree/repro/
 size=$(( $(du -sm tree | cut -f1) + 300 ))
@@ -196,6 +196,8 @@ for part in /dev/nbd0p3 /dev/nbd0p2 /dev/nbd0p1; do
 done
 if [ -f sys/repro/out.txt ]; then tr -d '\r' < sys/repro/out.txt > "$here/out/out.txt"; else echo "no output from the guest" > "$here/out/out.txt"; fi
 [ -f sys/repro/setupcomplete.log ] && tr -d '\r' < sys/repro/setupcomplete.log | tail -n 10 || true
+# the logs of every JVM the guest ran (flags, kernel and Repro output)
+mkdir -p "$here/out/jdkrun" && sudo cp sys/jdkrun/*.txt "$here/out/jdkrun/" 2> /dev/null && sudo chown -R "$USER" "$here/out/jdkrun" || true
 sudo umount sys 2> /dev/null || true
 sudo qemu-nbd -d /dev/nbd0 > /dev/null
 rm -f pe.img system.qcow2 media.bin
@@ -208,7 +210,7 @@ elif grep -q '^RESULT: \|^RESULT keeps' "$here/out/out.txt"; then result="keeps 
 elif [ "$status" = 124 ]; then result="no result: the installation did not finish within $LIMIT seconds"
 else result="no result"; fi
 # one verdict per JDK configuration: how many runs of each were ok, wrong or crashed
-jdk=$(awk '/^JDKRUN / { tag = $2; v = $0; sub(/^[^=]*= /, "", v); split(v, w, " "); v = w[1]; n[tag]++; if (v == "ok") ok[tag]++; else if (v == "WRONG") wr[tag]++; else if (v == "CRASH") cr[tag]++; else ex[tag]++ }
+jdk=$(awk '/^(JDKRUN|KERNEL) / { tag = ($1 == "KERNEL" ? "kernel:" : "") $2; v = $0; sub(/^[^=]*= /, "", v); split(v, w, " "); v = w[1]; n[tag]++; if (v == "ok") ok[tag]++; else if (v == "WRONG") wr[tag]++; else if (v == "CRASH") cr[tag]++; else ex[tag]++ }
            END { for (t in n) printf "%s %d/%d ok%s%s%s; ", t, ok[t], n[t], (wr[t] ? ", " wr[t] " wrong" : ""), (cr[t] ? ", " cr[t] " crashed" : ""), (ex[t] ? ", " ex[t] " other" : "") }' "$here/out/out.txt")
 result="$result; Repro: ${jdk:-not run}"
 finish "$result"
