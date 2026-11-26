@@ -24,18 +24,15 @@ for %%z in (notrap base scrub14) do (
     echo JDK %%z: !J_%%z! >> %U%out.txt
   )
 )
+echo JAVAC start >> %U%out.txt
 "!J_notrap!javac.exe" --add-modules jdk.incubator.vector -d %W%\classes %U%Repro.java >> %U%out.txt 2>&1
+echo JAVAC exit !ERRORLEVEL! >> %U%out.txt
 set "NONE=-XX:-AvoidLosableStateAtTraps -XX:-ScrubExceptionXStateHeader"
-echo JVMLOG notrap >> %U%out.txt
-"!J_notrap!java.exe" -Xlog:os+cpu=info -XX:+UnlockDiagnosticVMOptions -XX:+PrintFlagsFinal -version 2>&1 | findstr /i "kernel exception xsave capped resumed SVE UseAVX MaxVectorSize AvoidLosableStateAtTraps UseFPUForSpilling" >> %U%out.txt
-echo JVMLOG notrap-none >> %U%out.txt
-if /i not "%PROCESSOR_ARCHITECTURE%"=="ARM64" "!J_notrap!java.exe" -Xlog:os+cpu=info -XX:+UnlockDiagnosticVMOptions %NONE% -XX:+PrintFlagsFinal -version 2>&1 | findstr /i "kernel exception xsave capped resumed SVE UseAVX MaxVectorSize AvoidLosableStateAtTraps ScrubExceptionXStateHeader" >> %U%out.txt
-for %%z in (base scrub14) do (
-  if defined J_%%z (
-    echo JVMLOG %%z >> %U%out.txt
-    "!J_%%z!java.exe" -Xlog:os+cpu=info -XX:+UnlockDiagnosticVMOptions -XX:+PrintFlagsFinal -version 2>&1 | findstr /i "kernel exception xsave capped resumed SVE UseAVX MaxVectorSize" >> %U%out.txt
-  )
-)
+rem no pipes: each JVM writes a file, and a marker line before it tells which one was running if the guest stops
+call :flags notrap notrap
+if /i not "%PROCESSOR_ARCHITECTURE%"=="ARM64" call :flags notrap-none notrap "%NONE%"
+call :flags base base
+call :flags scrub14 scrub14
 if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
   set "ARGS=30 4"
   rem no notrap-none here: ScrubExceptionXStateHeader is an x64 flag, and with the mode off the notrap build does
@@ -62,12 +59,24 @@ for %%s in (13 25) do (
 )
 goto :eof
 
+rem :flags <tag> <jdk> [flags]: the CPU features, the exception mode and the vector flags each configuration starts with
+:flags
+if not defined J_%2 goto :eof
+set "JAVA=!J_%2!java.exe"
+set "EXTRA=%~3"
+echo JVMLOG %1 start >> %U%out.txt
+"!JAVA!" -Xlog:os+cpu=info -XX:+UnlockDiagnosticVMOptions !EXTRA! -XX:+PrintFlagsFinal -version > %W%\flags_%1.txt 2>&1
+echo JVMLOG %1 exit !ERRORLEVEL! >> %U%out.txt
+findstr /i "kernel exception xsave capped resumed SVE UseAVX MaxVectorSize AvoidLosableStateAtTraps UseFPUForSpilling ScrubExceptionXStateHeader" %W%\flags_%1.txt >> %U%out.txt
+goto :eof
+
 rem :run <tag> <jdk> <seed> [flags]
 :run
 if not defined J_%2 goto :eof
 set "JAVA=!J_%2!java.exe"
 set "EXTRA=%~4"
 del /q %W%\hs_*.log 2> nul
+echo JDKSTART %1 seed %3 >> %U%out.txt
 "!JAVA!" -XX:+UnlockDiagnosticVMOptions -XX:+SafepointALot -XX:GuaranteedSafepointInterval=1 -XX:+StressGCM -XX:+StressLCM -XX:StressSeed=%3 !EXTRA! -XX:-CreateCoredumpOnCrash -XX:ErrorFile=%W%\hs_%%p.log --add-modules jdk.incubator.vector -cp %W%\classes Repro !ARGS! > %W%\log_%1_%3.txt 2>&1
 set CODE=!ERRORLEVEL!
 set "R=exit !CODE!"

@@ -118,18 +118,22 @@ printf '[LaunchApps]\r\nX:\\Windows\\System32\\cmd.exe, /c X:\\Windows\\System32
   echo 'add winpeshl.ini /Windows/System32/winpeshl.ini'
   echo 'add repro-start.cmd /Windows/System32/repro-start.cmd'
 } > update.txt
-if [ "$OVERRIDE" != none ]; then
-  wimlib-imagex extract tree/sources/boot.wim "$image" /Windows/System32/config/SYSTEM --dest-dir=. --no-acls > /dev/null
-  {
-    echo 'Windows Registry Editor Version 5.00'
+# a stop error stays on screen (AutoReboot 0), so the screenshots show it instead of QEMU exiting on the reset
+wimlib-imagex extract tree/sources/boot.wim "$image" /Windows/System32/config/SYSTEM --dest-dir=. --no-acls > /dev/null
+{
+  echo 'Windows Registry Editor Version 5.00'
+  echo
+  echo '[HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Control\CrashControl]'
+  echo '"AutoReboot"=dword:00000000'
+  if [ "$OVERRIDE" != none ]; then
     echo
     echo '[HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\3\1150694031]'
     echo "\"EnabledState\"=dword:0000000$OVERRIDE"
     echo '"EnabledStateOptions"=dword:00000000'
-  } > override.reg
-  hivexregedit --merge --prefix 'HKEY_LOCAL_MACHINE\SYSTEM' SYSTEM override.reg
-  echo 'add SYSTEM /Windows/System32/config/SYSTEM' >> update.txt
-fi
+  fi
+} > override.reg
+hivexregedit --merge --prefix 'HKEY_LOCAL_MACHINE\SYSTEM' SYSTEM override.reg
+echo 'add SYSTEM /Windows/System32/config/SYSTEM' >> update.txt
 wimlib-imagex update tree/sources/boot.wim "$image" < update.txt > /dev/null
 ls -l tree/sources/boot.wim
 echo "::endgroup::"
@@ -190,10 +194,10 @@ timeout "$LIMIT" "$@" -display none -serial file:serial.txt -nic none -no-reboot
 pid=$!
 n=0
 while kill -0 $pid 2> /dev/null; do
-  sleep 8
+  sleep 5
   n=$((n + 1))
   timeout 25 python3 "$here/ci/screenshot.py" qmp.sock "$here/out/screens/$(printf '%04d' $n).png" 2> /dev/null || true
-  ls "$here/out/screens" | head -n -4 | while read -r old; do rm -f "$here/out/screens/$old"; done
+  ls "$here/out/screens" | head -n -12 | while read -r old; do rm -f "$here/out/screens/$old"; done
 done
 wait $pid || status=$?
 echo "the guest ran $(( $(date +%s) - start )) seconds, QEMU status $status (124: stopped at the time limit)"

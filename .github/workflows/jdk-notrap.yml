@@ -37,7 +37,7 @@ jobs:
                   | {name: $i.name, arch: $i.arch, type: $i.type, url: $i.url, sha1: ($i.sha1 // ""),
                      boot: ($i.boot // "uefi"), cpu: ($i.cpu // "host"), mode: ($i.mode // "install"),
                      edition: ($i.edition // "."), key: ($i.key // ""), legacy: ($i.legacy // ""), override: $c, slot: $s}]
-                 | to_entries | map(.value + {id: .key})' ci/jdk-images.json > matrix.json
+                 | to_entries | map(.value + {id: .key}) | map(select(.arch as $a | (env.ARCHES // "x64,arm64") | split(",") | index($a)))' ci/jdk-images.json > matrix.json
           jq -r '.[] | "\(.id)\t\(.arch)\t\(.mode)\t\(.name)\t\(.override)\t\(.slot)"' matrix.json
           echo "x64=$(jq -c '[.[] | select(.arch == "x64")]' matrix.json)" >> "$GITHUB_OUTPUT"
           echo "arm64=$(jq -c '[.[] | select(.arch == "arm64")]' matrix.json)" >> "$GITHUB_OUTPUT"
@@ -199,7 +199,7 @@ jobs:
           OVERRIDE: ${{ matrix.override }}
           EDITION: ${{ matrix.edition }}
           CLOCK: ${{ matrix.clock }}
-          LIMIT: '18000'
+          LIMIT: '7200'
         run: bash ci/winpe-jdk-vm.sh
       - name: Summary
         if: always()
