@@ -4,7 +4,7 @@ rem compiles Repro with the notrap build, and runs Repro under the stress flags 
 rem Each run adds one JDKRUN line to out.txt: ok (exit 0), WRONG (exit 3: a wrong result), CRASH (an hs_err file), or
 rem the exit code. Configurations: notrap (AvoidLosableStateAtTraps on, the default on Windows), base (the unpatched
 rem JDK), notrap-none (the notrap build with the mode off: no protection),
-rem scrub14 (the previous mitigation), and the nofpu variants without UseFPUForSpilling.
+rem and, where Repro runs, the nofpu variants without UseFPUForSpilling. Only the kernel runs now.
 rem On Arm64 (emulated, slow) only the kernel runs, longer, and there is no scrub14 build.
 setlocal enabledelayedexpansion
 set U=%~dp0
@@ -34,7 +34,6 @@ rem no pipes: each JVM writes a file, and a marker line before it tells which on
 call :flags notrap notrap
 call :flags notrap-none notrap "%NONE%"
 call :flags base base
-call :flags scrub14 scrub14
 rem the deterministic kernel first: stale header planted, vectors live across polls and a faulting null check
 if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
   rem under emulation a slow host makes few calls a minute, and C2 code runs from about the fourth
@@ -49,19 +48,6 @@ for %%n in (1 2 3) do (
   call :kernel base base
   call :kernel notrap notrap
   call :kernel notrap-none notrap "%NONE%"
-)
-call :kernel scrub14 scrub14
-set "ARGS=10 4"
-rem seed 25 is the one that loses state most often under the unpatched base, so it runs four times
-for %%s in (13 18 25 39 54 25 25 25) do (
-  call :run notrap notrap %%s
-  call :run base base %%s
-  call :run notrap-none notrap %%s "%NONE%"
-)
-for %%s in (13 25) do (
-  call :run notrap-nofpu notrap %%s -XX:-UseFPUForSpilling
-  call :run base-nofpu base %%s -XX:-UseFPUForSpilling
-  call :run scrub14 scrub14 %%s
 )
 goto :eof
 

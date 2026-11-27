@@ -63,9 +63,8 @@ jobs:
         run: |
           mkdir -p jdks/x64 jdks/arm64
           # <arch>:<tag>:<run>:<artifact>
-          for spec in x64:notrap:$JDK_RUN:bundles-windows-x64 x64:base:$JDK_RUN:bundles-windows-x64-base \
-                      x64:scrub14:$JDK_RUN:bundles-windows-x64-scrub14 arm64:notrap:$JDK_ARM64_RUN:bundles-windows-aarch64 \
-                      arm64:base:$JDK_ARM64_BASE_RUN:bundles-windows-aarch64; do
+          for spec in x64:notrap:$JDK_RUN:bundles-windows-x64 x64:base:$JDK_BASE_RUN:bundles-windows-x64-base \
+                      arm64:notrap:$JDK_ARM64_RUN:bundles-windows-aarch64 arm64:base:$JDK_ARM64_BASE_RUN:bundles-windows-aarch64; do
             IFS=: read -r arch tag run artifact <<< "$spec"
             gh run download "$run" -R Auties00/jdk -n "$artifact" -D "dl/$arch-$tag"
             cp "$(find "dl/$arch-$tag" -name 'jdk-windows-*.zip' | grep -v -e symbols -e debug | head -1)" "jdks/$arch/$tag.zip"
@@ -97,6 +96,7 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
         include: ${{ fromJSON(needs.setup.outputs.x64) }}
     steps:
